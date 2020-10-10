@@ -1,0 +1,51 @@
+syntax = "proto2";
+
+package frankenpaxos.raft;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  package_name: "frankenpaxos.raft"
+  flat_package: true
+};
+
+message VoteRequest {
+  required int32 term = 1;
+  required int32 candidate_id = 2;
+  required int32 last_log_index = 3;
+  required int32 last_log_term = 4;
+}
+
+message VoteResponse {
+  required int32 term = 1;
+  required bool vote_granted = 2;
+}
+
+message AppendEntriesRequest {
+  required int32 term = 1;
+  required int32 leader_id = 2;
+  required int32 prev_log_index = 3;
+  required int32 prev_log_term = 4;
+
+  message LogEntry {
+    required int32 term = 1;
+    required string command = 2;
+  }
+
+  repeated LogEntry entries = 5;
+  required int32 leader_commit = 6;
+}
+
+message AppendEntriesResponse {
+  required int32 term = 1;
+  required bool success = 2;
+}
+
+message RaftMessage {
+  oneof request {
+    VoteRequest vote_request = 1;
+    VoteResponse vote_response = 2;
+    AppendEntriesRequest append_entries_request = 3;
+    AppendEntriesResponse append_entries_response = 4;
+  }
+}
