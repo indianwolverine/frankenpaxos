@@ -11,9 +11,8 @@ option (scalapb.options) = {
 
 message VoteRequest {
   required int32 term = 1;
-  required int32 candidate_id = 2;
-  required int32 last_log_index = 3;
-  required int32 last_log_term = 4;
+  // required int32 last_log_index = 2;
+  // required int32 last_log_term = 3;
 }
 
 message VoteResponse {
@@ -23,9 +22,8 @@ message VoteResponse {
 
 message AppendEntriesRequest {
   required int32 term = 1;
-  required int32 leader_id = 2;
-  required int32 prev_log_index = 3;
-  required int32 prev_log_term = 4;
+  // required int32 prev_log_index = 2;
+  // required int32 prev_log_term = 3;
 
   message LogEntry {
     required int32 term = 1;
@@ -33,7 +31,7 @@ message AppendEntriesRequest {
   }
 
   repeated LogEntry entries = 5;
-  required int32 leader_commit = 6;
+  // required int32 leader_commit = 6;
 }
 
 message AppendEntriesResponse {
@@ -41,7 +39,7 @@ message AppendEntriesResponse {
   required bool success = 2;
 }
 
-message RaftMessage {
+message ParticipantInbound {
   oneof request {
     VoteRequest vote_request = 1;
     VoteResponse vote_response = 2;
