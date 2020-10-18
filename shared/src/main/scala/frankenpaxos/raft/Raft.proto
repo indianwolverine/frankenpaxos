@@ -20,18 +20,18 @@ message VoteResponse {
   required bool vote_granted = 2;
 }
 
+message LogEntry {
+  required int32 term = 1;
+  required string command = 2;
+}
+
 message AppendEntriesRequest {
   required int32 term = 1;
   // required int32 prev_log_index = 2;
   // required int32 prev_log_term = 3;
 
-  message LogEntry {
-    required int32 term = 1;
-    required string command = 2;
-  }
-
-  repeated LogEntry entries = 5;
-  // required int32 leader_commit = 6;
+  repeated LogEntry entries = 4;
+  // required int32 leader_commit = 5;
 }
 
 message AppendEntriesResponse {
