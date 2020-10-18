@@ -132,6 +132,30 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
+  // The log
+  var log: Array[LogEntry] = new Array[LogEntry](0)
+
+  // The index of highest log entry known to be committed
+  var commitIndex: Int = 0
+
+  // The index of highest log entry applied to state machine
+  var lastApplied: Int = 0
+
+  // Leader State (reinit on election) /////////////////////////////////////////
+
+  // index of next log entry to be sent to participant
+  var nextIndex: Map[Transport#Address, Int] = {
+    for (a <- addresses)
+      yield (a -> 0)
+  }.toMap
+
+  // index of highest log entry known to be replicated on participant
+  var matchIndex: Map[Transport#Address, Int] = {
+    for (a <- addresses)
+      yield (a -> 0)
+  }.toMap
+  
+
   // Callback registration /////////////////////////////////////////////////////
   def _register(callback: (Transport#Address) => Unit) = {
     callbacks += callback
