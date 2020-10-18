@@ -218,8 +218,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       src: Transport#Address,
       voteRequest: VoteRequest
   ): Unit = {
-    // If we hear a vote request from an earlier term, we ignore it.
+    // If we hear a vote request from an earlier term, reply with current term and don't grant vote.
     if (voteRequest.term < term) {
+      nodes(src).send(ParticipantInbound().withVoteResponse(VoteResponse(term = term, voteGranted = false)))
       return
     }
 
@@ -231,7 +232,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       val t = noPingTimer()
       t.start()
       state = LeaderlessFollower(t)
-      nodes(src).send(ParticipantInbound().withVoteRequest(VoteRequest(term = term)))
+      nodes(src).send(ParticipantInbound().withVoteResponse(VoteResponse(term = term, voteGranted = true)))
       return
     }
 
@@ -422,9 +423,17 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     t.start()
     state = Candidate(t, Set())
 
+    val last_log_index = log.length
+    var last_log_term = term - 1
+    if (log.length > 0) {
+      last_log_term = log(last_log_index).term
+    }
+
+    val v = VoteRequest(term = term, lastLogIndex = last_log_index, lastLogTerm = last_log_term)
+
     for (address <- addresses) {
       nodes(address).send(
-        ParticipantInbound().withVoteRequest(VoteRequest(term = term))
+        ParticipantInbound().withVoteRequest(v)
       )
     }
   }
