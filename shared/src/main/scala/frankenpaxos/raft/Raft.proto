@@ -11,8 +11,8 @@ option (scalapb.options) = {
 
 message VoteRequest {
   required int32 term = 1;
-  // required int32 last_log_index = 2;
-  // required int32 last_log_term = 3;
+  required int32 last_log_index = 2;
+  required int32 last_log_term = 3;
 }
 
 message VoteResponse {
