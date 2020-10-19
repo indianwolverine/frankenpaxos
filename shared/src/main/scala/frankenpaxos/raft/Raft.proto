@@ -27,11 +27,10 @@ message LogEntry {
 
 message AppendEntriesRequest {
   required int32 term = 1;
-  // required int32 prev_log_index = 2;
-  // required int32 prev_log_term = 3;
-
+  required int32 prev_log_index = 2;
+  required int32 prev_log_term = 3;
   repeated LogEntry entries = 4;
-  // required int32 leader_commit = 5;
+  required int32 leader_commit = 5;
 }
 
 message AppendEntriesResponse {
