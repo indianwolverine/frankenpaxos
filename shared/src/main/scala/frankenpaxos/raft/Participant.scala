@@ -183,8 +183,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def handleAppendEntriesRequest(src: Transport#Address, appReq: AppendEntriesRequest): Unit = {
-    // If we hear a ping from an earlier term, we ignore it.
+    // If we hear a ping from an earlier term, return false and term.
     if (appReq.term < term) {
+      nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
       return
     }
 
@@ -195,12 +196,31 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       return
     }
 
+    // If our prevLogTerm doesn't match the requests', return false.
+    if (getPrevLogTerm() != appReq.prevLogTerm) {
+      nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
+      return
+    }
+
     state match {
       case LeaderlessFollower(noPingTimer) => {
         transitionToFollower(appReq.term, src)
       }
       case Follower(noPingTimer, leader) => {
+        // reset heartbeat timer
         noPingTimer.reset()
+
+        // if this is not a hearbeat msg, main appendEntries logic
+        if (appReq.entries.length > 0) {
+          // If an existing entry conflicts with a new one (same index
+          // but different terms), delete the existing entry and all that
+          // follow it
+
+          // Append any new entries not already in the log
+
+          // If leaderCommit > commitIndex, set commitIndex =
+          // min(leaderCommit, index of last new entry)
+        }
       }
       case Candidate(notEnoughVotesTimer, votes) => {
         transitionToFollower(appReq.term, src)
@@ -212,7 +232,44 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def handleAppendEntriesResponse(src: Transport#Address, appRes: AppendEntriesResponse): Unit = {}
+  private def handleAppendEntriesResponse(src: Transport#Address, appRes: AppendEntriesResponse): Unit = {
+    // If we hear from a leader in a larger term, then we immediately become a
+    // follower of that leader.
+    if (appRes.term > term) {
+      transitionToFollower(appRes.term, src)
+      return
+    }
+
+    state match {
+      case LeaderlessFollower(noPingTimer) => {
+        logger.fatal(
+          s"A leaderless follower recieved an AppendEntriesResponse."
+        )
+        return
+      }
+      case Follower(noPingTimer, leader) => {
+        logger.fatal(
+          s"A follower recieved an AppendEntriesResponse."
+        )
+        return
+      }
+      case Candidate(notEnoughVotesTimer, votes) => {
+        logger.fatal(
+          s"A candidate recieved an AppendEntriesResponse."
+        )
+        return
+      }
+      case Leader(pingTimer) => {
+        if (appRes.success) {
+          // update nextIndex and matchIndex for follower (src)
+        }
+        else {
+          // decrement nextIndex for follower (src) and retry AppendEntriesRequest
+        }
+      }
+    }
+
+  }
 
   private def handleVoteRequest(
       src: Transport#Address,
@@ -309,7 +366,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
           for (address <- addresses) {
             nodes(address).send(
-              ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, entries = List()))
+              ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
             )
           }
 
@@ -353,7 +410,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       () => {
         for (address <- addresses) {
           nodes(address).send(
-            ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, entries = List()))
+            ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
           )
         }
         t.start()
@@ -423,18 +480,34 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     t.start()
     state = Candidate(t, Set())
 
-    val last_log_index = log.length
-    var last_log_term = term - 1
-    if (log.length > 0) {
-      last_log_term = log(last_log_index).term
-    }
-
-    val v = VoteRequest(term = term, lastLogIndex = last_log_index, lastLogTerm = last_log_term)
-
     for (address <- addresses) {
       nodes(address).send(
-        ParticipantInbound().withVoteRequest(v)
+        ParticipantInbound().withVoteRequest(VoteRequest(term = term, lastLogIndex = getLastLogIndex(), lastLogTerm = getLastLogTerm()))
       )
+    }
+  }
+
+  private def getLastLogIndex(): Int = {
+    log.length
+  }
+
+  private def getLastLogTerm(): Int = {
+    if (log.length > 0) {
+      log(log.length - 1).term
+    } else {
+      term - 1
+    }
+  } 
+
+  private def getPrevLogIndex(): Int = {
+    log.length - 1
+  }
+
+  private def getPrevLogTerm(): Int = {
+    if (log.length > 1) {
+      log(log.length - 1).term
+    } else {
+      -1
     }
   }
 }
