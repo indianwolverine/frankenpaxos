@@ -62,7 +62,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def sendCommandImpl(cmd: String): Unit = {
-    // raftParticipants(leaderIndex).send(ParticipantInbound().withCommandRequest(CommandRequest(cmd = cmd)))
+    raftParticipants(leaderIndex).send(ParticipantInbound().withCmdRequest(CommandRequest(cmd = cmd)))
   }
 
   def sendCommand(cmd: String): Unit = {

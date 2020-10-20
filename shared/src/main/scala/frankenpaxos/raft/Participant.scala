@@ -212,28 +212,28 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def handleCommandRequest(src: Transport#Address, cmdReq: CommandRequest): Unit = {
-    // state match {
-    //   case LeaderlessFollower(noPingTimer) => {
-    //     // don't know real leader, so pick a random other node
-    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
-    //   }
-    //   case Follower(noPingTimer, leader) => {
-    //     // we know leader, so send back index of leader
-    //     val leaderIndex = raftParticipants.indexOf(leader)
-    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
-    //   }
-    //   case Candidate(notEnoughVotesTimer, votes) => {
-    //     // don't know real leader, so pick a random other node
-    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
-    //   }
-    //   case Leader(pingTimer) => {
-    //     // leader can handle client requests directly
-    //     // get majority commit then send back response
-    //     // TODO
-    //     val leaderIndex = raftParticipants.indexOf(leader)
-    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
-    //   }
-    // }
+    state match {
+      case LeaderlessFollower(noPingTimer) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+      }
+      case Follower(noPingTimer, leader) => {
+        // we know leader, so send back index of leader
+        val leaderIndex = raftParticipants.indexOf(leader)
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+      }
+      case Candidate(notEnoughVotesTimer, votes) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+      }
+      case Leader(pingTimer) => {
+        // leader can handle client requests directly
+        // get majority commit then send back response
+        // TODO
+        val leaderIndex = raftParticipants.indexOf(leader)
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+      }
+    }
   }
 
 
