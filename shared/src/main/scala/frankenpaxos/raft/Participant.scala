@@ -6,6 +6,7 @@ import frankenpaxos.Logger
 import frankenpaxos.ProtoSerializer
 import frankenpaxos.Util
 import scala.collection.mutable
+import scala.util.Random
 import scala.scalajs.js.annotation._
 
 @JSExportAll
@@ -57,7 +58,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     address: Transport#Address,
     transport: Transport,
     logger: Logger,
-    addresses: Set[Transport#Address],
+    config: Config[Transport],
     // A potential initial leader. If participants are initialized with a
     // leader, at most one leader should be set.
     leader: Option[Transport#Address] = None,
@@ -91,19 +92,43 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   override def serializer = Participant.serializer
 
   // Sanity check arguments.
-  logger.check(addresses.contains(address))
+  logger.check(config.participantAddresses.contains(address))
   logger.checkLe(options.noPingTimeoutMin, options.noPingTimeoutMax)
   logger.checkLe(options.notEnoughVotesTimeoutMin,
                  options.notEnoughVotesTimeoutMax)
   leader match {
-    case Some(address) => logger.check(addresses.contains(address))
+    case Some(address) => logger.check(config.participantAddresses.contains(address))
     case None          =>
   }
 
+  // The set of participant nodes in a Seq.
+  // Indices of this list are used to communicate leader information to clients.
+  private val raftParticipants: Seq[Chan[Participant[Transport]]] =
+    for (participantAddress <- config.participantAddresses)
+      yield
+        chan[Participant[Transport]](
+          participantAddress,
+          Participant.serializer
+        )
+
   // The addresses of the other participants.
   val nodes: Map[Transport#Address, Chan[Participant[Transport]]] = {
-    for (a <- addresses)
-      yield (a -> chan[Participant[Transport]](a, Participant.serializer))
+    for (participantAddress <- config.participantAddresses)
+      yield (participantAddress -> 
+        chan[Participant[Transport]](
+          participantAddress, 
+          Participant.serializer)
+        )
+  }.toMap
+
+  // The addresses of the clients.
+  val clients: Map[Transport#Address, Chan[Client[Transport]]] = {
+    for (clientAddress <- config.clientAddresses)
+      yield (clientAddress -> 
+        chan[Client[Transport]](
+          clientAddress, 
+          Client.serializer)
+        )
   }.toMap
 
   // The callbacks to inform when a new leader is elected.
@@ -145,16 +170,19 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // index of next log entry to be sent to participant
   var nextIndex: Map[Transport#Address, Int] = {
-    for (a <- addresses)
+    for (a <- config.participantAddresses)
       yield (a -> 0)
   }.toMap
 
   // index of highest log entry known to be replicated on participant
   var matchIndex: Map[Transport#Address, Int] = {
-    for (a <- addresses)
+    for (a <- config.participantAddresses)
       yield (a -> 0)
   }.toMap
-  
+
+  // random 
+  val rand = new Random();
+
 
   // Callback registration /////////////////////////////////////////////////////
   def _register(callback: (Transport#Address) => Unit) = {
@@ -172,6 +200,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     import ParticipantInbound.Request
     inbound.request match {
+      case Request.CmdRequest(r)            => handleCommandRequest(src, r)
       case Request.AppendEntriesRequest(r)  => handleAppendEntriesRequest(src, r)
       case Request.AppendEntriesResponse(r) => handleAppendEntriesResponse(src, r)
       case Request.VoteRequest(r)           => handleVoteRequest(src, r)
@@ -181,6 +210,32 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
     }
   }
+
+  private def handleCommandRequest(src: Transport#Address, cmdReq: CommandRequest): Unit = {
+    // state match {
+    //   case LeaderlessFollower(noPingTimer) => {
+    //     // don't know real leader, so pick a random other node
+    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+    //   }
+    //   case Follower(noPingTimer, leader) => {
+    //     // we know leader, so send back index of leader
+    //     val leaderIndex = raftParticipants.indexOf(leader)
+    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+    //   }
+    //   case Candidate(notEnoughVotesTimer, votes) => {
+    //     // don't know real leader, so pick a random other node
+    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+    //   }
+    //   case Leader(pingTimer) => {
+    //     // leader can handle client requests directly
+    //     // get majority commit then send back response
+    //     // TODO
+    //     val leaderIndex = raftParticipants.indexOf(leader)
+    //     clients(src).send(ClientInbound().withCommandResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+    //   }
+    // }
+  }
+
 
   private def handleAppendEntriesRequest(src: Transport#Address, appReq: AppendEntriesRequest): Unit = {
     // If we hear a ping from an earlier term, return false and term.
@@ -210,6 +265,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // reset heartbeat timer
         noPingTimer.reset()
 
+        // TODO
         // if this is not a hearbeat msg, main appendEntries logic
         if (appReq.entries.length > 0) {
           // If an existing entry conflicts with a new one (same index
@@ -259,7 +315,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         )
         return
       }
-      case Leader(pingTimer) => {
+      case Leader(pingTimer) => { // TODO
         if (appRes.success) {
           // update nextIndex and matchIndex for follower (src)
         }
@@ -358,13 +414,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // If we've received votes from a majority of the nodes, then we are
         // the leader for this term. `addresses.size / 2 + 1` is just a
         // formula for a majority.
-        if (newState.votes.size >= (addresses.size / 2 + 1)) {
+        if (newState.votes.size >= (config.participantAddresses.size / 2 + 1)) {
           stopTimer(state)
           val t = pingTimer()
           t.start()
           state = Leader(t)
 
-          for (address <- addresses) {
+          for (address <- config.participantAddresses) {
             nodes(address).send(
               ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
             )
@@ -408,7 +464,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       "pingTimer",
       options.pingPeriod,
       () => {
-        for (address <- addresses) {
+        for (address <- config.participantAddresses) {
           nodes(address).send(
             ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
           )
@@ -480,7 +536,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     t.start()
     state = Candidate(t, Set())
 
-    for (address <- addresses) {
+    for (address <- config.participantAddresses) {
       nodes(address).send(
         ParticipantInbound().withVoteRequest(VoteRequest(term = term, lastLogIndex = getLastLogIndex(), lastLogTerm = getLastLogTerm()))
       )
