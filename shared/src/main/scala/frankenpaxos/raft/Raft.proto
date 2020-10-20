@@ -38,11 +38,28 @@ message AppendEntriesResponse {
   required bool success = 2;
 }
 
+message CommandRequest {
+  required string cmd = 1;
+}
+
+message CommandResponse {
+  required bool success = 1;
+  required int32 leader_index = 2;
+  required string cmd = 3;
+}
+
 message ParticipantInbound {
   oneof request {
     VoteRequest vote_request = 1;
     VoteResponse vote_response = 2;
     AppendEntriesRequest append_entries_request = 3;
     AppendEntriesResponse append_entries_response = 4;
+    CommandRequest cmd_request = 5;
+  }
+}
+
+message ClientInbound {
+  oneof request {
+    CommandResponse cmd_response = 1;
   }
 }
