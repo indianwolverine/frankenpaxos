@@ -104,13 +104,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // The set of participant nodes in a Seq.
   // Indices of this list are used to communicate leader information to clients.
-  private val raftParticipants: Seq[Chan[Participant[Transport]]] =
-    for (participantAddress <- config.participantAddresses)
-      yield
-        chan[Participant[Transport]](
-          participantAddress,
-          Participant.serializer
-        )
+  val participants: Seq[Transport#Address] = {
+      for (participantAddress <- config.participantAddresses)
+        yield participantAddress
+  }
 
   // The addresses of the other participants.
   val nodes: Map[Transport#Address, Chan[Participant[Transport]]] = {
@@ -216,7 +213,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
-        val leaderIndex = raftParticipants.indexOf(leader)
+        val leaderIndex = participants.indexOf(leader)
         clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
       }
       case Candidate(notEnoughVotesTimer, votes) => {
@@ -328,7 +325,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
           // TODO: wait for majority commit then send back response
 
-          // val leaderIndex = raftParticipants.indexOf(leader)
+          // val leaderIndex = participants.indexOf(leader)
           // clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
         }
         else {
