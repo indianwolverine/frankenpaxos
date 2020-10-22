@@ -6,6 +6,7 @@ import frankenpaxos.Logger
 import frankenpaxos.ProtoSerializer
 import frankenpaxos.Util
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 import scala.scalajs.js.annotation._
 
@@ -158,7 +159,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   // The log
-  var log: Array[LogEntry] = new Array[LogEntry](0)
+  var log: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
 
   // The index of highest log entry known to be committed
   var commitIndex: Int = 0
@@ -230,6 +231,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // leader can handle client requests directly
         // get majority commit then send back response
         // TODO
+
+        // add cmd to leader log
+
+        // send AppendEntriesRequest to all participants
+
         val leaderIndex = raftParticipants.indexOf(leader)
         clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
       }
@@ -265,17 +271,25 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // reset heartbeat timer
         noPingTimer.reset()
 
-        // TODO
         // if this is not a hearbeat msg, main appendEntries logic
         if (appReq.entries.length > 0) {
-          // If an existing entry conflicts with a new one (same index
-          // but different terms), delete the existing entry and all that
-          // follow it
+          if (!checkPrevEntry(appReq.prevLogIndex, appReq.prevLogIndex)) {
+            nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
+            return
+          }
 
-          // Append any new entries not already in the log
+          // Prune conflicting entries and 
+          // append any new entries not already in the log
+          applyEntries(appReq.prevLogIndex + 1, appReq.entries)
 
           // If leaderCommit > commitIndex, set commitIndex =
           // min(leaderCommit, index of last new entry)
+          if (appReq.leaderCommit > commitIndex) {
+            commitIndex = appReq.leaderCommit.min(getPrevLogIndex())
+          }
+
+          // send success response
+          nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = true)))
         }
       }
       case Candidate(notEnoughVotesTimer, votes) => {
@@ -529,6 +543,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     )
   }
 
+  // Helpers /////////////////////////////////////////////////////////////////
   private def transitionToCandidate(): Unit = {
     stopTimer(state)
     term += 1
@@ -565,5 +580,28 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     } else {
       -1
     }
+  }
+
+  private def checkPrevEntry(prevLogIndex: Int, prevLogTerm: Int): Boolean = {
+    if (prevLogIndex < log.length) {
+      log(prevLogIndex).term == prevLogTerm
+    }
+    false
+  }
+
+  private def applyEntries(start: Int, entries: Seq[LogEntry]): Unit = {
+    // prune conflicting entries
+    for (i <- start until log.length) {
+      if (log(i).term != entries(i - start).term) {
+        log.remove(i, log.length - i)
+      }
+    }
+
+    // apply new entries
+    for (i <- 0 until entries.length) {
+      if ((i + start) > log.length) {
+        log :+ entries(i)
+      }
+    } 
   }
 }
