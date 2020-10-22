@@ -3,17 +3,17 @@ let client_info = {
   
     data: function() {
       return {
-        command: "",
+        message: "",
       };
     },
   
     methods: {
       sendCommand: function() {
-        if (this.command === "") {
+        if (this.message === "") {
           return;
         }
-        this.node.actor.sendCommand(this.command);
-        this.command = "";
+        this.node.actor.sendCommand(this.message);
+        this.message = "";
       }
     },
   
@@ -21,9 +21,29 @@ let client_info = {
       <div>
         <button v-on:click="sendCommand">Send Command</button>
         <input v-model="message" v-on:keyup.enter="sendCommand"></input>
+
+        <div><strong>Leader Index</strong>: {{node.actor.leaderIndex}}</div>
+        <div><strong>Participants</strong>: {{node.actor.raftParticipants}}</div>
+
       </div>
     `,
   };
+
+let participant_info = {
+  props: ['node'],
+  template: `
+    <div>
+      <div><strong>State</strong>: {{node.actor.state}}</div>
+      <div><strong>Log</strong>: {{node.actor.log}}</div>
+      <div><strong>Next Index</strong>: {{node.actor.nextIndex}}</div>
+      <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
+      <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
+      <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
+      <div><strong>Participants</strong>: {{node.actor.participants}}</div>
+      <div><strong>Clients</strong>: {{node.actor.clients}}</div>
+    </div>
+  `,
+};
 
 // Returns numbers drawn from an exponential distribution with mean `mean`.
 let exponential = function(mean) {
@@ -93,6 +113,7 @@ let exponential = function(mean) {
         snap.text(ax, ay, '0').attr(title_attr),
         snap.text(tax, tay, 'a').attr(title_attr),
       ],
+      component: participant_info,
     };
     nodes[Raft.participant2.address] = {
       actor: Raft.participant2,
@@ -101,6 +122,7 @@ let exponential = function(mean) {
         snap.text(bx, by, '0').attr(title_attr),
         snap.text(tbx, tby, 'b').attr(title_attr),
       ],
+      component: participant_info,
     };
     nodes[Raft.participant3.address] = {
       actor: Raft.participant3,
@@ -109,6 +131,7 @@ let exponential = function(mean) {
         snap.text(cx, cy, '0').attr(title_attr),
         snap.text(tcx, tcy, 'c').attr(title_attr),
       ],
+      component: participant_info,
     };
     nodes[Raft.participant4.address] = {
       actor: Raft.participant4,
@@ -117,6 +140,7 @@ let exponential = function(mean) {
         snap.text(dx, dy, '0').attr(title_attr),
         snap.text(tdx, tdy, 'd').attr(title_attr),
       ],
+      component: participant_info,
     };
     nodes[Raft.participant5.address] = {
       actor: Raft.participant5,
@@ -125,6 +149,7 @@ let exponential = function(mean) {
         snap.text(ex, ey, '0').attr(title_attr),
         snap.text(tex, tey, 'e').attr(title_attr),
       ],
+      component: participant_info,
     };
 
     // Clients.

@@ -30,7 +30,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   override def serializer = Client.serializer
 
   // The set of raft nodes.
-  private val raftParticipants: Seq[Chan[Participant[Transport]]] =
+  val raftParticipants: Seq[Chan[Participant[Transport]]] =
     for (participantAddress <- config.participantAddresses)
       yield
         chan[Participant[Transport]](
@@ -39,7 +39,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         )
 
   // index of presumed leader
-  private var leaderIndex = 0
+  var leaderIndex = 0
 
   logger.info(s"Raft client listening on $srcAddress.")
 
