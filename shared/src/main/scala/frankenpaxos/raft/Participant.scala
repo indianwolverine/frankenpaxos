@@ -170,16 +170,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // Leader State (reinit on election) /////////////////////////////////////////
 
   // index of next log entry to be sent to participant
-  var nextIndex: Map[Transport#Address, Int] = {
-    for (a <- config.participantAddresses)
-      yield (a -> 0)
-  }.toMap
+  var nextIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
+  config.participantAddresses.foreach { a => nextIndex.update(a, 0) }
 
   // index of highest log entry known to be replicated on participant
-  var matchIndex: Map[Transport#Address, Int] = {
-    for (a <- config.participantAddresses)
-      yield (a -> 0)
-  }.toMap
+  var matchIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
+  config.participantAddresses.foreach { a => matchIndex.update(a, 0) }
 
   // random 
   val rand = new Random();
@@ -229,15 +225,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Leader(pingTimer) => {
         // leader can handle client requests directly
-        // get majority commit then send back response
-        // TODO
 
         // add cmd to leader log
+        log.append(LogEntry(term = term, command = cmdReq.cmd))
 
         // send AppendEntriesRequest to all participants
-
-        val leaderIndex = raftParticipants.indexOf(leader)
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+        for (address <- config.participantAddresses) {
+          sendAppEntReq(address)
+        }
       }
     }
   }
@@ -257,12 +252,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       return
     }
 
-    // If our prevLogTerm doesn't match the requests', return false.
-    if (getPrevLogTerm() != appReq.prevLogTerm) {
-      nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
-      return
-    }
-
     state match {
       case LeaderlessFollower(noPingTimer) => {
         transitionToFollower(appReq.term, src)
@@ -273,6 +262,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
         // if this is not a hearbeat msg, main appendEntries logic
         if (appReq.entries.length > 0) {
+          // check that log contains entry at prevLogIndex with term == prevLogTerm
           if (!checkPrevEntry(appReq.prevLogIndex, appReq.prevLogIndex)) {
             nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
             return
@@ -332,9 +322,19 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Leader(pingTimer) => { // TODO
         if (appRes.success) {
           // update nextIndex and matchIndex for follower (src)
+          nextIndex.update(src, getPrevLogIndex())
+
+          // TODO: matchIndex updates
+
+          // TODO: wait for majority commit then send back response
+
+          // val leaderIndex = raftParticipants.indexOf(leader)
+          // clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
         }
         else {
           // decrement nextIndex for follower (src) and retry AppendEntriesRequest
+          nextIndex.update(src, nextIndex(src) - 1)
+          sendAppEntReq(src)
         }
       }
     }
@@ -600,8 +600,23 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     // apply new entries
     for (i <- 0 until entries.length) {
       if ((i + start) > log.length) {
-        log :+ entries(i)
+        log.append(entries(i))
       }
     } 
+  }
+
+  private def sendAppEntReq(address: Transport#Address): Unit = {
+    val prevLogIndex = nextIndex(address) - 1
+    val prevLogTerm = log(prevLogIndex).term
+
+    var entries: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
+
+    for (i <- nextIndex(address) until log.length) {
+      entries.append(log(i))
+    }
+
+    nodes(address).send(
+      ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = prevLogIndex, prevLogTerm = prevLogTerm, entries = entries, leaderCommit = commitIndex))
+    )
   }
 }
