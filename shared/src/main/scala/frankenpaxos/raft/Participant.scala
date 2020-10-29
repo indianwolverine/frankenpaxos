@@ -112,9 +112,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // The addresses of the other participants.
   val nodes: Map[Transport#Address, Chan[Participant[Transport]]] = {
     for (participantAddress <- config.participantAddresses)
-      yield (participantAddress -> 
+      yield (participantAddress ->
         chan[Participant[Transport]](
-          participantAddress, 
+          participantAddress,
           Participant.serializer)
         )
   }.toMap
@@ -122,9 +122,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // The addresses of the clients.
   val clients: Map[Transport#Address, Chan[Client[Transport]]] = {
     for (clientAddress <- config.clientAddresses)
-      yield (clientAddress -> 
+      yield (clientAddress ->
         chan[Client[Transport]](
-          clientAddress, 
+          clientAddress,
           Client.serializer)
         )
   }.toMap
@@ -177,7 +177,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   var matchIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => matchIndex.update(a, 0) }
 
-  // random 
+  // random
   val rand = new Random();
 
 
@@ -269,7 +269,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             return
           }
 
-          // Prune conflicting entries and 
+          // Prune conflicting entries and
           // append any new entries not already in the log
           applyEntries(appReq.prevLogIndex + 1, appReq.entries)
 
@@ -574,7 +574,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     } else {
       term - 1
     }
-  } 
+  }
 
   private def getPrevLogIndex(): Int = {
     log.length - 1
@@ -608,7 +608,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       if ((i + start) > log.length) {
         log.append(entries(i))
       }
-    } 
+    }
   }
 
   private def sendAppEntReq(address: Transport#Address): Unit = {
