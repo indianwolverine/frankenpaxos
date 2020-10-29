@@ -166,6 +166,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // Leader State (reinit on election) /////////////////////////////////////////
 
+  // The set of appendEntriesResponses from the current round
+  var appendEntriesResponses = mutable.Set[AppendEntriesResponse]()
+
   // index of next log entry to be sent to participant
   var nextIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => nextIndex.update(a, 0) }
@@ -317,17 +320,22 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         )
         return
       }
-      case Leader(pingTimer) => { // TODO
+      case Leader(pingTimer) => {
         if (appRes.success) {
-          // update nextIndex and matchIndex for follower (src)
+          // Update nextIndex and matchIndex for follower (src)
           nextIndex.update(src, getPrevLogIndex())
+          matchIndex.update(src, getPrevLogIndex())
 
-          // TODO: matchIndex updates
+          appendEntriesResponses += appRes
+          // Wait until we have a majority before committing
+          if (appendEntriesResponses.size < (participants.size / 2 + 1)) {
+              return
+          }
+          commitIndex += 1
 
-          // TODO: wait for majority commit then send back response
-
-          // val leaderIndex = participants.indexOf(leader)
-          // clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+          val cmd = log(commitIndex - 1).command
+          val leaderIndex = participants.indexOf(leader)
+          clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmd)))
         }
         else {
           // decrement nextIndex for follower (src) and retry AppendEntriesRequest
