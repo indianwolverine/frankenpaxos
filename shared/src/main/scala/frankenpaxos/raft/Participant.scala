@@ -209,6 +209,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def handleCommandRequest(src: Transport#Address, cmdReq: CommandRequest): Unit = {
+    logger.info(s"Got CommandRequest from ${src}" 
+                + s"| Command: ${cmdReq.cmd}")
+  
     state match {
       case LeaderlessFollower(noPingTimer) => {
         // don't know real leader, so pick a random other node
@@ -239,6 +242,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
 
   private def handleAppendEntriesRequest(src: Transport#Address, appReq: AppendEntriesRequest): Unit = {
+    logger.info(s"Got AppendEntriesRequest from ${src}" 
+                + s"| Term: ${appReq.term}"
+                + s"| PrevLogIndex = ${appReq.prevLogIndex}"
+                + s"| PrevLogTerm: ${appReq.prevLogTerm}" 
+                + s"| Leader Commit: ${appReq.leaderCommit}"
+                + s"| Entries: ${appReq.entries}")
+
     // If we hear a ping from an earlier term, return false and term.
     if (appReq.term < term) {
       nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
@@ -257,7 +267,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         transitionToFollower(appReq.term, src)
       }
       case Follower(noPingTimer, leader) => {
-        logger.info(s"Got AppendEntriesRequest from ${src} | Term: ${appReq.term} | PrevLogIndex = ${appReq.prevLogIndex} | PrevLogTerm: ${appReq.prevLogTerm} | Leader Commit: ${appReq.leaderCommit} | Entries: ${appReq.entries}")
         // reset heartbeat timer
         noPingTimer.reset()
 
@@ -294,6 +303,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def handleAppendEntriesResponse(src: Transport#Address, appRes: AppendEntriesResponse): Unit = {
+    logger.info(s"Got AppendEntriesResponse from ${src}" 
+                + s"| Term: ${appRes.term}"
+                + s"| Success = ${appRes.success}")
+
     // If we hear from a leader in a larger term, then we immediately become a
     // follower of that leader.
     if (appRes.term > term) {
@@ -351,6 +364,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       src: Transport#Address,
       voteRequest: VoteRequest
   ): Unit = {
+    logger.info(s"Got VoteRequest from ${src}" 
+                + s"| Term: ${voteRequest.term}"
+                + s"| LastLogIndex = ${voteRequest.lastLogIndex}"
+                + s"| LastLogTerm: ${voteRequest.lastLogTerm}")
+
     // If we hear a vote request from an earlier term, reply with current term and don't grant vote.
     if (voteRequest.term < term) {
       nodes(src).send(ParticipantInbound().withVoteResponse(VoteResponse(term = term, voteGranted = false)))
@@ -393,6 +411,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def handleVoteResponse(src: Transport#Address, vote: VoteResponse): Unit = {
+    logger.info(s"Got VoteResponse from ${src}" 
+            + s"| Term: ${vote.term}"
+            + s"| VoteGranted = ${vote.voteGranted}")
+
     // If we hear a vote from an earlier term, we ignore it.
     if (vote.term < term) {
       return
@@ -428,6 +450,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // case, we simply ignore the vote.
       }
       case Candidate(notEnoughVotesTimer, votes) => {
+        // exit early if vote is not granted
+        if (!vote.voteGranted) {
+          return
+        }
+
         val newState = Candidate(notEnoughVotesTimer, votes + src)
         state = newState
 
