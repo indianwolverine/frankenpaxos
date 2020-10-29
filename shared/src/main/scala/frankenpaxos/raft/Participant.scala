@@ -227,7 +227,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         log.append(LogEntry(term = term, command = cmdReq.cmd))
 
         // send AppendEntriesRequest to all participants
-        for (address <- config.participantAddresses) {
+        for (address <- participants) {
           sendAppEntReq(address)
         }
       }
@@ -254,6 +254,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         transitionToFollower(appReq.term, src)
       }
       case Follower(noPingTimer, leader) => {
+        logger.info(s"Got AppendEntriesRequest from ${src} | Term: ${appReq.term} | PrevLogIndex = ${appReq.prevLogIndex} | PrevLogTerm: ${appReq.prevLogTerm} | Leader Commit: ${appReq.leaderCommit} | Entries: ${appReq.entries}")
         // reset heartbeat timer
         noPingTimer.reset()
 
@@ -425,13 +426,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // If we've received votes from a majority of the nodes, then we are
         // the leader for this term. `addresses.size / 2 + 1` is just a
         // formula for a majority.
-        if (newState.votes.size >= (config.participantAddresses.size / 2 + 1)) {
+        if (newState.votes.size >= (participants.size / 2 + 1)) {
           stopTimer(state)
           val t = pingTimer()
           t.start()
           state = Leader(t)
 
-          for (address <- config.participantAddresses) {
+          for (address <- participants) {
             nodes(address).send(
               ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
             )
@@ -475,7 +476,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       "pingTimer",
       options.pingPeriod,
       () => {
-        for (address <- config.participantAddresses) {
+        for (address <- participants) {
           nodes(address).send(
             ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
           )
@@ -548,7 +549,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     t.start()
     state = Candidate(t, Set())
 
-    for (address <- config.participantAddresses) {
+    for (address <- participants) {
       nodes(address).send(
         ParticipantInbound().withVoteRequest(VoteRequest(term = term, lastLogIndex = getLastLogIndex(), lastLogTerm = getLastLogTerm()))
       )
@@ -603,6 +604,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def sendAppEntReq(address: Transport#Address): Unit = {
+    logger.info(s"Sending AppendEntriesRequest to ${address}")
     val prevLogIndex = nextIndex(address) - 1
     val prevLogTerm = log(prevLogIndex).term
 
