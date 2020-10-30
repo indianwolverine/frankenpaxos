@@ -168,9 +168,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // Leader State (reinit on election) /////////////////////////////////////////
 
-  // The set of appendEntriesResponses from the current round
-  var appendEntriesResponses = mutable.Set[AppendEntriesResponse]()
-
   // index of next log entry to be sent to participant
   var nextIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => nextIndex.update(a, 1) }
@@ -178,6 +175,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // index of highest log entry known to be replicated on participant
   var matchIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => matchIndex.update(a, 1) }
+
+  // map of clients whose commands are at log index n
+  var clientReturn: mutable.Map[Int, Chan[Client[Transport]]] = mutable.Map[Int, Chan[Client[Transport]]]()
 
   // random
   val rand = new Random();
@@ -208,158 +208,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         logger.fatal("Empty LeaderInbound encountered.")
       }
     }
-  }
-
-  private def handleCommandRequest(src: Transport#Address, cmdReq: CommandRequest): Unit = {
-    logger.info(s"Got CommandRequest from ${src}" 
-                + s"| Command: ${cmdReq.cmd}")
-  
-    state match {
-      case LeaderlessFollower(noPingTimer) => {
-        // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
-      }
-      case Follower(noPingTimer, leader) => {
-        // we know leader, so send back index of leader
-        val leaderIndex = participants.indexOf(leader)
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
-      }
-      case Candidate(notEnoughVotesTimer, votes) => {
-        // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
-      }
-      case Leader(pingTimer) => {
-        // leader can handle client requests directly
-
-        // add cmd to leader log
-        log.append(LogEntry(term = term, command = cmdReq.cmd))
-
-        // send AppendEntriesRequest to all participants
-        for (address <- participants) {
-          sendAppEntReq(address)
-        }
-      }
-    }
-  }
-
-
-  private def handleAppendEntriesRequest(src: Transport#Address, appReq: AppendEntriesRequest): Unit = {
-    logger.info(s"Got AppendEntriesRequest from ${src}" 
-                + s"| Term: ${appReq.term}"
-                + s"| PrevLogIndex = ${appReq.prevLogIndex}"
-                + s"| PrevLogTerm: ${appReq.prevLogTerm}" 
-                + s"| Leader Commit: ${appReq.leaderCommit}"
-                + s"| Entries: ${appReq.entries}")
-
-    // If we hear a ping from an earlier term, return false and term.
-    if (appReq.term < term) {
-      nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
-      return
-    }
-
-    // If we hear from a leader in a larger term, then we immediately become a
-    // follower of that leader.
-    if (appReq.term > term) {
-      transitionToFollower(appReq.term, src)
-      return
-    }
-
-    state match {
-      case LeaderlessFollower(noPingTimer) => {
-        transitionToFollower(appReq.term, src)
-      }
-      case Follower(noPingTimer, leader) => {
-        // reset heartbeat timer
-        noPingTimer.reset()
-
-        // if this is not a hearbeat msg, main appendEntries logic
-        if (appReq.entries.length > 0) {
-          // check that log contains entry at prevLogIndex with term == prevLogTerm
-          if (!checkPrevEntry(appReq.prevLogIndex, appReq.prevLogIndex)) {
-            nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false)))
-            return
-          }
-
-          // Prune conflicting entries and
-          // append any new entries not already in the log
-          applyEntries(appReq.prevLogIndex + 1, appReq.entries)
-
-          // If leaderCommit > commitIndex, set commitIndex =
-          // min(leaderCommit, index of last new entry)
-          if (appReq.leaderCommit > commitIndex) {
-            commitIndex = appReq.leaderCommit.min(getPrevLogIndex())
-          }
-
-          // send success response
-          nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = true)))
-        }
-      }
-      case Candidate(notEnoughVotesTimer, votes) => {
-        transitionToFollower(appReq.term, src)
-      }
-      case Leader(pingTimer) => {
-        // We are the leader and received a ping from ourselves. We can just
-        // ignore this ping.
-      }
-    }
-  }
-
-  private def handleAppendEntriesResponse(src: Transport#Address, appRes: AppendEntriesResponse): Unit = {
-    logger.info(s"Got AppendEntriesResponse from ${src}" 
-                + s"| Term: ${appRes.term}"
-                + s"| Success = ${appRes.success}")
-
-    // If we hear from a leader in a larger term, then we immediately become a
-    // follower of that leader.
-    if (appRes.term > term) {
-      transitionToFollower(appRes.term, src)
-      return
-    }
-
-    state match {
-      case LeaderlessFollower(noPingTimer) => {
-        logger.fatal(
-          s"A leaderless follower recieved an AppendEntriesResponse."
-        )
-        return
-      }
-      case Follower(noPingTimer, leader) => {
-        logger.fatal(
-          s"A follower recieved an AppendEntriesResponse."
-        )
-        return
-      }
-      case Candidate(notEnoughVotesTimer, votes) => {
-        logger.fatal(
-          s"A candidate recieved an AppendEntriesResponse."
-        )
-        return
-      }
-      case Leader(pingTimer) => {
-        if (appRes.success) {
-          // Update nextIndex and matchIndex for follower (src)
-          nextIndex.update(src, getPrevLogIndex())
-          matchIndex.update(src, getPrevLogIndex())
-
-          appendEntriesResponses += appRes
-          // Wait until we have a majority before committing
-          if (appendEntriesResponses.size < (participants.size / 2 + 1)) {
-              return
-          }
-          commitIndex += 1
-
-          val cmd = log(commitIndex - 1).command
-          val leaderIndex = participants.indexOf(leader)
-          clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = cmd)))
-        }
-        else {
-          // decrement nextIndex for follower (src) and retry AppendEntriesRequest
-          nextIndex.update(src, nextIndex(src) - 1)
-          sendAppEntReq(src)
-        }
-      }
-    }
-
   }
 
   private def handleVoteRequest(
@@ -485,6 +333,165 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
+  private def handleCommandRequest(src: Transport#Address, cmdReq: CommandRequest): Unit = {
+    logger.info(s"Got CommandRequest from ${src}" 
+                + s"| Command: ${cmdReq.cmd}")
+  
+    state match {
+      case LeaderlessFollower(noPingTimer) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+      }
+      case Follower(noPingTimer, leader) => {
+        // we know leader, so send back index of leader
+        val leaderIndex = participants.indexOf(leader)
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+      }
+      case Candidate(notEnoughVotesTimer, votes) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+      }
+      case Leader(pingTimer) => {
+        // leader can handle client requests directly
+
+        // add cmd to leader log
+        log.append(LogEntry(term = term, command = cmdReq.cmd))
+
+        // keep track of which client is associated with this log entry
+        clientReturn.update(getPrevLogIndex(), clients(src))
+
+        // send AppendEntriesRequest to all participants
+        for (address <- participants) {
+          sendAppEntReq(address)
+        }
+      }
+    }
+  }
+
+
+  private def handleAppendEntriesRequest(src: Transport#Address, appReq: AppendEntriesRequest): Unit = {
+    logger.info(s"Got AppendEntriesRequest from ${src}" 
+                + s"| Term: ${appReq.term}"
+                + s"| PrevLogIndex = ${appReq.prevLogIndex}"
+                + s"| PrevLogTerm: ${appReq.prevLogTerm}" 
+                + s"| Leader Commit: ${appReq.leaderCommit}"
+                + s"| Entries: ${appReq.entries}")
+
+    // If we hear a ping from an earlier term, return false and term.
+    if (appReq.term < term) {
+      nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false, lastLogIndex = getPrevLogIndex())))
+      return
+    }
+
+    // If we hear from a leader in a larger term, then we immediately become a
+    // follower of that leader.
+    if (appReq.term > term) {
+      transitionToFollower(appReq.term, src)
+      return
+    }
+
+    state match {
+      case LeaderlessFollower(noPingTimer) => {
+        transitionToFollower(appReq.term, src)
+      }
+      case Follower(noPingTimer, leader) => {
+        // reset heartbeat timer
+        noPingTimer.reset()
+
+        // If leaderCommit > commitIndex, set commitIndex =
+        // min(leaderCommit, index of last new entry)
+        if (appReq.leaderCommit > commitIndex) {
+          commitIndex = appReq.leaderCommit.min(getPrevLogIndex())
+        }
+
+        // if this is not a hearbeat msg, main appendEntries logic
+        if (appReq.entries.length > 0) {
+          // check that log contains entry at prevLogIndex with term == prevLogTerm
+          if (!checkPrevEntry(appReq.prevLogIndex, appReq.prevLogIndex)) {
+            nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false, lastLogIndex = getPrevLogIndex())))
+            return
+          }
+
+          // Prune conflicting entries and
+          // append any new entries not already in the log
+          applyEntries(appReq.prevLogIndex + 1, appReq.entries)
+
+          // send success response
+          nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = true, lastLogIndex = getPrevLogIndex())))
+        }
+      }
+      case Candidate(notEnoughVotesTimer, votes) => {
+        transitionToFollower(appReq.term, src)
+      }
+      case Leader(pingTimer) => {
+        // We are the leader and received a ping from ourselves. We can just
+        // ignore this ping.
+      }
+    }
+  }
+
+  private def handleAppendEntriesResponse(src: Transport#Address, appRes: AppendEntriesResponse): Unit = {
+    logger.info(s"Got AppendEntriesResponse from ${src}" 
+                + s"| Term: ${appRes.term}"
+                + s"| Success = ${appRes.success}"
+                + s"| LastLogIndex = ${appRes.lastLogIndex}")
+
+    // If we hear from a leader in a larger term, then we immediately become a
+    // follower of that leader.
+    if (appRes.term > term) {
+      transitionToFollower(appRes.term, src)
+      return
+    }
+
+    state match {
+      case LeaderlessFollower(noPingTimer) => {
+        logger.fatal(
+          s"A leaderless follower recieved an AppendEntriesResponse."
+        )
+        return
+      }
+      case Follower(noPingTimer, leader) => {
+        logger.fatal(
+          s"A follower recieved an AppendEntriesResponse."
+        )
+        return
+      }
+      case Candidate(notEnoughVotesTimer, votes) => {
+        logger.fatal(
+          s"A candidate recieved an AppendEntriesResponse."
+        )
+        return
+      }
+      case Leader(pingTimer) => {
+        if (appRes.success) {
+          // Update nextIndex and matchIndex for follower (src)
+          nextIndex.update(src, appRes.lastLogIndex + 1)
+          matchIndex.update(src, appRes.lastLogIndex)
+
+          // If there exists an N such that N > commitIndex, a majority
+          // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+          // set commitIndex = N
+          commitIndex = updateCommitIndex()
+
+          // send successful responses to clients whose commands have been committed
+          val leaderIndex = participants.indexOf(leader)
+          for ((index, client) <- clientReturn) {
+            if (commitIndex >= index) {
+              clientReturn(index).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = "")))
+            }
+            clientReturn.remove(index)
+          }
+        }
+        else {
+          // decrement nextIndex for follower (src) and retry AppendEntriesRequest
+          nextIndex.update(src, nextIndex(src) - 1)
+          sendAppEntReq(src)
+        }
+      }
+    }
+
+  }
+
   private def stopTimer(state: ElectionState): Unit = {
     state match {
       case LeaderlessFollower(noPingTimer)   => { noPingTimer.stop() }
@@ -588,7 +595,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
     for (address <- participants) {
       nodes(address).send(
-        ParticipantInbound().withVoteRequest(VoteRequest(term = term, lastLogIndex = getLastLogIndex(), lastLogTerm = getLastLogTerm()))
+        ParticipantInbound().withVoteRequest(VoteRequest(term = term, lastLogIndex = getPrevLogIndex(), lastLogTerm = getLastLogTerm()))
       )
     }
   }
@@ -653,5 +660,23 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     nodes(address).send(
       ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = prevLogIndex, prevLogTerm = prevLogTerm, entries = entries, leaderCommit = commitIndex))
     )
+  }
+
+  private def updateCommitIndex(): Int = {
+    var maxMajorityIndex: Int = commitIndex
+
+    for ((addr1, index1) <- matchIndex) {
+      var count: Int = 0
+      for ((addr2, index2) <- matchIndex) {
+        if (index2 >= index1) {
+          count += 1
+        }
+      }
+      if (count > ((participants.size / 2) + 1) && log(index1).term == term) {
+        maxMajorityIndex = maxMajorityIndex.max(index1)
+      }
+    }
+
+    return maxMajorityIndex
   }
 }
