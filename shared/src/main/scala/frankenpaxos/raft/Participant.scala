@@ -482,8 +482,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           for ((index, client) <- clientReturn) {
             if (commitIndex >= index) {
               clientReturn(index).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = "")))
+              clientReturn.remove(index)
             }
-            clientReturn.remove(index)
           }
         }
         else {
