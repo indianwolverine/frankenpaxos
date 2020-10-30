@@ -157,6 +157,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // The log
   var log: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
+  // add dummy entry to log
+  log.append(LogEntry(term = 0, command = "dummy"))
 
   // The index of highest log entry known to be committed
   var commitIndex: Int = 0
@@ -171,11 +173,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // index of next log entry to be sent to participant
   var nextIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
-  config.participantAddresses.foreach { a => nextIndex.update(a, 0) }
+  config.participantAddresses.foreach { a => nextIndex.update(a, 1) }
 
   // index of highest log entry known to be replicated on participant
   var matchIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
-  config.participantAddresses.foreach { a => matchIndex.update(a, 0) }
+  config.participantAddresses.foreach { a => matchIndex.update(a, 1) }
 
   // random
   val rand = new Random();
@@ -597,27 +599,25 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   private def getLastLogTerm(): Int = {
     if (log.length > 0) {
-      log(log.length - 1).term
+      return log(log.length - 1).term
     } else {
-      term - 1
+      return term - 1
     }
   }
 
   private def getPrevLogIndex(): Int = {
+    // log always has length >= 1
     log.length - 1
   }
 
   private def getPrevLogTerm(): Int = {
-    if (log.length > 1) {
-      log(log.length - 1).term
-    } else {
-      -1
-    }
+    // log always has length >= 1
+    log(log.length - 1).term
   }
 
   private def checkPrevEntry(prevLogIndex: Int, prevLogTerm: Int): Boolean = {
     if (prevLogIndex < log.length) {
-      log(prevLogIndex).term == prevLogTerm
+      return log(prevLogIndex).term == prevLogTerm
     }
     false
   }
@@ -632,7 +632,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
     // apply new entries
     for (i <- 0 until entries.length) {
-      if ((i + start) > log.length) {
+      if ((i + start) >= log.length) {
         log.append(entries(i))
       }
     }
@@ -640,6 +640,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   private def sendAppEntReq(address: Transport#Address): Unit = {
     logger.info(s"Sending AppendEntriesRequest to ${address}")
+    
     val prevLogIndex = nextIndex(address) - 1
     val prevLogTerm = log(prevLogIndex).term
 
