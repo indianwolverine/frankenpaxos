@@ -37,6 +37,7 @@ let participant_info = {
       <div><strong>Log</strong>: {{node.actor.log}}</div>
       <div><strong>Next Index</strong>: {{node.actor.nextIndex}}</div>
       <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
+      <div><strong>Client Return</strong>: {{node.actor.clientReturn}}</div>
       <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
       <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
       <div><strong>Participants</strong>: {{node.actor.participants}}</div>

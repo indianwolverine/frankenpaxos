@@ -58,6 +58,8 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         leaderIndex = cmdRes.leaderIndex
         logger.info(s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}.")
         sendCommand(cmdRes.cmd)
+    } else {
+      logger.info(s"Command succussfully replicated!")
     }
   }
 

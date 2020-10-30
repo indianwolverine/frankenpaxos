@@ -36,6 +36,7 @@ message AppendEntriesRequest {
 message AppendEntriesResponse {
   required int32 term = 1;
   required bool success = 2;
+  required int32 last_log_index = 3;
 }
 
 message CommandRequest {
