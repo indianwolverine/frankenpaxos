@@ -317,10 +317,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           t.start()
           state = Leader(t)
 
-          for (address <- participants) {
-            nodes(address).send(
-              ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
-            )
+          for (addr <- participants) {
+            if (!addr.equals(address)) {
+              nodes(addr).send(
+                ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
+              )
+            }
           }
 
           callbacks.foreach(_(address))
@@ -361,8 +363,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         clientReturn.update(getPrevLogIndex(), clients(src))
 
         // send AppendEntriesRequest to all participants
-        for (address <- participants) {
-          sendAppEntReq(address)
+        for (addr <- participants) {
+          if (!addr.equals(address)) {
+            sendAppEntReq(addr)
+          }
         }
       }
     }
@@ -520,10 +524,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       "pingTimer",
       options.pingPeriod,
       () => {
-        for (address <- participants) {
-          nodes(address).send(
-            ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
-          )
+        for (addr <- participants) {
+          if (!addr.equals(address)) {
+            nodes(addr).send(
+              ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
+            )
+          }
         }
         t.start()
       }

@@ -54,6 +54,11 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def handleCommandResponse(src: Transport#Address, cmdRes: CommandResponse) {
+    logger.info(s"Got CommandRequest from ${src}" 
+                + s"| Success: ${cmdRes.success}"
+                + s"| LeaderIndex: ${cmdRes.leaderIndex}"
+                + s"| Command: ${cmdRes.cmd}")
+            
     if (!cmdRes.success) {
         leaderIndex = cmdRes.leaderIndex
         logger.info(s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}.")
