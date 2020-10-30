@@ -46,33 +46,59 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   override def receive(src: Transport#Address, inbound: InboundMessage): Unit = {
     import ClientInbound.Request
     inbound.request match {
-      case Request.CmdResponse(r) => handleCommandResponse(src, r)
+      case Request.WriteCmdResponse(r) => handleWriteCommandResponse(src, r)
+      case Request.ReadCmdResponse(r)  => handleReadCommandResponse(src, r)
       case Request.Empty => {
         logger.fatal("Empty ClientInbound encountered.")
       }
     }
   }
 
-  private def handleCommandResponse(src: Transport#Address, cmdRes: CommandResponse) {
-    logger.info(s"Got CommandRequest from ${src}" 
+  private def handleWriteCommandResponse(src: Transport#Address, cmdRes: WriteCommandResponse) {
+    logger.info(s"Got WriteCommandResponse from ${src}" 
                 + s"| Success: ${cmdRes.success}"
                 + s"| LeaderIndex: ${cmdRes.leaderIndex}"
-                + s"| Command: ${cmdRes.cmd}")
+                + s"| Command: ${cmdRes.cmd}"
+                + s"| LogIndex: ${cmdRes.index}")
             
     if (!cmdRes.success) {
         leaderIndex = cmdRes.leaderIndex
         logger.info(s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}.")
-        sendCommand(cmdRes.cmd)
+        writeCommand(cmdRes.cmd)
     } else {
       logger.info(s"Command succussfully replicated!")
     }
   }
 
-  private def sendCommandImpl(cmd: String): Unit = {
-    raftParticipants(leaderIndex).send(ParticipantInbound().withCmdRequest(CommandRequest(cmd = cmd)))
+  private def handleReadCommandResponse(src: Transport#Address, cmdRes: ReadCommandResponse) {
+    logger.info(s"Got ReadCommandResponse from ${src}" 
+                + s"| Success: ${cmdRes.success}"
+                + s"| LeaderIndex: ${cmdRes.leaderIndex}"
+                + s"| Command: ${cmdRes.cmd}"
+                + s"| LogIndex: ${cmdRes.index}")
+            
+    if (!cmdRes.success) {
+        leaderIndex = cmdRes.leaderIndex
+        logger.info(s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}.")
+        readCommand(cmdRes.index)
+    } else {
+      logger.info(s"Read command successfully!")
+    }
   }
 
-  def sendCommand(cmd: String): Unit = {
-    transport.executionContext().execute(() => sendCommandImpl(cmd))
+  private def writeCommandImpl(cmd: String): Unit = {
+    raftParticipants(leaderIndex).send(ParticipantInbound().withWriteCmdRequest(WriteCommandRequest(cmd = cmd)))
+  }
+
+  private def readCommandImpl(index: Int): Unit = {
+    raftParticipants(leaderIndex).send(ParticipantInbound().withReadCmdRequest(ReadCommandRequest(index = index)))
+  }
+
+  def writeCommand(cmd: String): Unit = {
+    transport.executionContext().execute(() => writeCommandImpl(cmd))
+  }
+
+  def readCommand(index: Int): Unit = {
+    transport.executionContext().execute(() => readCommandImpl(index))
   }
 }

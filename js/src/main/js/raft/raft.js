@@ -4,23 +4,38 @@ let client_info = {
     data: function() {
       return {
         message: "",
+        readIndex: "",
       };
     },
   
     methods: {
-      sendCommand: function() {
+      writeCommand: function() {
         if (this.message === "") {
           return;
         }
-        this.node.actor.sendCommand(this.message);
+        this.node.actor.writeCommand(this.message);
         this.message = "";
+      },
+      readCommand: function() {
+        if (this.readIndex === "") {
+          return;
+        }
+        this.node.actor.readCommand(parseInt(this.readIndex));
+        this.readIndex = "";
       }
     },
   
     template: `
       <div>
-        <button v-on:click="sendCommand">Send Command</button>
-        <input v-model="message" v-on:keyup.enter="sendCommand"></input>
+        <div>
+          <button v-on:click="writeCommand">Send Command</button>
+          <input v-model="message" v-on:keyup.enter="writeCommand"></input>
+        </div>
+
+        <div>
+          <button v-on:click="readCommand">Read Command</button>
+          <input v-model="readIndex" v-on:keyup.enter="readCommand"></input>
+        </div>
 
         <div><strong>Leader Index</strong>: {{node.actor.leaderIndex}}</div>
         <div><strong>Participants</strong>: {{node.actor.raftParticipants}}</div>
@@ -37,7 +52,8 @@ let participant_info = {
       <div><strong>Log</strong>: {{node.actor.log}}</div>
       <div><strong>Next Index</strong>: {{node.actor.nextIndex}}</div>
       <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
-      <div><strong>Client Return</strong>: {{node.actor.clientReturn}}</div>
+      <div><strong>Client Write Return</strong>: {{node.actor.clientWriteReturn}}</div>
+      <div><strong>Client Read Return</strong>: {{node.actor.clientReadReturn}}</div>
       <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
       <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
       <div><strong>Participants</strong>: {{node.actor.participants}}</div>

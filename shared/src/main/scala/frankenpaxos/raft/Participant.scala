@@ -177,7 +177,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   config.participantAddresses.foreach { a => matchIndex.update(a, 1) }
 
   // map of clients whose commands are at log index n
-  var clientReturn: mutable.Map[Int, Chan[Client[Transport]]] = mutable.Map[Int, Chan[Client[Transport]]]()
+  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = mutable.Map[Int, Chan[Client[Transport]]]()
+
+  // map of clients with read requests for index n
+  var clientReadReturn: mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]] = mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]]()
 
   // random
   val rand = new Random();
@@ -199,7 +202,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     import ParticipantInbound.Request
     inbound.request match {
-      case Request.CmdRequest(r)            => handleCommandRequest(src, r)
+      case Request.WriteCmdRequest(r)       => handleWriteCommandRequest(src, r)
+      case Request.ReadCmdRequest(r)        => handleReadCommandRequest(src, r)
       case Request.AppendEntriesRequest(r)  => handleAppendEntriesRequest(src, r)
       case Request.AppendEntriesResponse(r) => handleAppendEntriesResponse(src, r)
       case Request.VoteRequest(r)           => handleVoteRequest(src, r)
@@ -335,23 +339,23 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def handleCommandRequest(src: Transport#Address, cmdReq: CommandRequest): Unit = {
-    logger.info(s"Got CommandRequest from ${src}" 
+  private def handleWriteCommandRequest(src: Transport#Address, cmdReq: WriteCommandRequest): Unit = {
+    logger.info(s"Got WriteCommandRequest from ${src}" 
                 + s"| Command: ${cmdReq.cmd}")
   
     state match {
       case LeaderlessFollower(noPingTimer) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+        clients(src).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd, index = -1)))
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
         val leaderIndex = participants.indexOf(leader)
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd)))
+        clients(src).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd, index = -1)))
       }
       case Candidate(notEnoughVotesTimer, votes) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withCmdResponse(CommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd)))
+        clients(src).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd, index = -1)))
       }
       case Leader(pingTimer) => {
         // leader can handle client requests directly
@@ -360,12 +364,52 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         log.append(LogEntry(term = term, command = cmdReq.cmd))
 
         // keep track of which client is associated with this log entry
-        clientReturn.update(getPrevLogIndex(), clients(src))
+        clientWriteReturn.update(getPrevLogIndex(), clients(src))
 
         // send AppendEntriesRequest to all participants
         for (addr <- participants) {
           if (!addr.equals(address)) {
             sendAppEntReq(addr)
+          }
+        }
+      }
+    }
+  }
+
+  private def handleReadCommandRequest(src: Transport#Address, cmdReq: ReadCommandRequest): Unit = {
+    logger.info(s"Got ReadCommandRequest from ${src}" 
+                + s"| Index: ${cmdReq.index}")
+  
+    state match {
+      case LeaderlessFollower(noPingTimer) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = "", index = -1)))
+      }
+      case Follower(noPingTimer, leader) => {
+        // we know leader, so send back index of leader
+        val leaderIndex = participants.indexOf(leader)
+        clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = false, leaderIndex = leaderIndex, cmd = "", index = -1)))
+      }
+      case Candidate(notEnoughVotesTimer, votes) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = "", index = -1)))
+      }
+      case Leader(pingTimer) => {
+        // leader can handle client requests directly
+
+        // command is committed in log, return immediately
+        if (cmdReq.index <= commitIndex) {
+          val leaderIndex = participants.indexOf(leader)
+          clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = true, leaderIndex = leaderIndex, cmd = log(cmdReq.index).command, index = cmdReq.index)))
+        } else {
+          // otherwise, keep this request around and service it when index commits
+          clientReadReturn get cmdReq.index match {
+            case Some(res) => clientReadReturn(cmdReq.index).append(clients(src))
+            case None => {
+              var clientReads: ArrayBuffer[Chan[Client[Transport]]] = new ArrayBuffer[Chan[Client[Transport]]](0)
+              clientReads.append(clients(src))
+              clientReadReturn.update(cmdReq.index, clientReads)
+            }
           }
         }
       }
@@ -479,10 +523,22 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
           // send successful responses to clients whose commands have been committed
           val leaderIndex = participants.indexOf(leader)
-          for ((index, client) <- clientReturn) {
+
+          // service pending write requests
+          for ((index, client) <- clientWriteReturn) {
             if (commitIndex >= index) {
-              clientReturn(index).send(ClientInbound().withCmdResponse(CommandResponse(success = true, leaderIndex = leaderIndex, cmd = "")))
-              clientReturn.remove(index)
+              clientWriteReturn(index).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = true, leaderIndex = leaderIndex, cmd = "", index = index)))
+              clientWriteReturn.remove(index)
+            }
+          }
+
+          // service pending read requests
+          for ((index, client) <- clientReadReturn) {
+            if (commitIndex >= index) {
+              for (addr <- clientReadReturn(index)) {
+                addr.send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = true, leaderIndex = leaderIndex, cmd = log(index).command, index = index)))
+              }
+              clientReadReturn.remove(index)
             }
           }
         }
