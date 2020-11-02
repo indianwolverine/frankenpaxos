@@ -96,37 +96,35 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   logger.check(config.participantAddresses.contains(address))
   logger.checkLe(options.noPingTimeoutMin, options.noPingTimeoutMax)
   logger.checkLe(options.notEnoughVotesTimeoutMin,
-                 options.notEnoughVotesTimeoutMax)
+                 options.notEnoughVotesTimeoutMax
+  )
   leader match {
-    case Some(address) => logger.check(config.participantAddresses.contains(address))
-    case None          =>
+    case Some(address) =>
+      logger.check(config.participantAddresses.contains(address))
+    case None =>
   }
 
   // The set of participant nodes in a Seq.
   // Indices of this list are used to communicate leader information to clients.
   val participants: Seq[Transport#Address] = {
-      for (participantAddress <- config.participantAddresses)
-        yield participantAddress
+    for (participantAddress <- config.participantAddresses)
+      yield participantAddress
   }
 
   // The addresses of the other participants.
   val nodes: Map[Transport#Address, Chan[Participant[Transport]]] = {
     for (participantAddress <- config.participantAddresses)
       yield (participantAddress ->
-        chan[Participant[Transport]](
-          participantAddress,
-          Participant.serializer)
-        )
+        chan[Participant[Transport]](participantAddress,
+                                     Participant.serializer
+        ))
   }.toMap
 
   // The addresses of the clients.
   val clients: Map[Transport#Address, Chan[Client[Transport]]] = {
     for (clientAddress <- config.clientAddresses)
       yield (clientAddress ->
-        chan[Client[Transport]](
-          clientAddress,
-          Client.serializer)
-        )
+        chan[Client[Transport]](clientAddress, Client.serializer))
   }.toMap
 
   // The callbacks to inform when a new leader is elected.
@@ -169,22 +167,25 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // Leader State (reinit on election) /////////////////////////////////////////
 
   // index of next log entry to be sent to participant
-  var nextIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
+  var nextIndex: mutable.Map[Transport#Address, Int] =
+    mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => nextIndex.update(a, 1) }
 
   // index of highest log entry known to be replicated on participant
-  var matchIndex: mutable.Map[Transport#Address, Int] = mutable.Map[Transport#Address, Int]()
+  var matchIndex: mutable.Map[Transport#Address, Int] =
+    mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => matchIndex.update(a, 1) }
 
   // map of clients whose commands are at log index n
-  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = mutable.Map[Int, Chan[Client[Transport]]]()
+  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] =
+    mutable.Map[Int, Chan[Client[Transport]]]()
 
   // map of clients with read requests for index n
-  var clientReadReturn: mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]] = mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]]()
+  var clientReadReturn: mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]] =
+    mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]]()
 
   // random
   val rand = new Random();
-
 
   // Callback registration /////////////////////////////////////////////////////
   def _register(callback: (Transport#Address) => Unit) = {
@@ -202,12 +203,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     import ParticipantInbound.Request
     inbound.request match {
-      case Request.WriteCmdRequest(r)       => handleWriteCommandRequest(src, r)
-      case Request.ReadCmdRequest(r)        => handleReadCommandRequest(src, r)
-      case Request.AppendEntriesRequest(r)  => handleAppendEntriesRequest(src, r)
-      case Request.AppendEntriesResponse(r) => handleAppendEntriesResponse(src, r)
-      case Request.VoteRequest(r)           => handleVoteRequest(src, r)
-      case Request.VoteResponse(r)          => handleVoteResponse(src, r)
+      case Request.ClientRequest(r)        => handleClientRequest(src, r)
+      case Request.ClientQuery(r)          => handleClientQuery(src, r)
+      case Request.AppendEntriesRequest(r) => handleAppendEntriesRequest(src, r)
+      case Request.AppendEntriesResponse(r) =>
+        handleAppendEntriesResponse(src, r)
+      case Request.VoteRequest(r)  => handleVoteRequest(src, r)
+      case Request.VoteResponse(r) => handleVoteResponse(src, r)
       case Request.Empty => {
         logger.fatal("Empty LeaderInbound encountered.")
       }
@@ -218,14 +220,20 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       src: Transport#Address,
       voteRequest: VoteRequest
   ): Unit = {
-    logger.info(s"Got VoteRequest from ${src}" 
-                + s"| Term: ${voteRequest.term}"
-                + s"| LastLogIndex = ${voteRequest.lastLogIndex}"
-                + s"| LastLogTerm: ${voteRequest.lastLogTerm}")
+    logger.info(
+      s"Got VoteRequest from ${src}"
+        + s"| Term: ${voteRequest.term}"
+        + s"| LastLogIndex = ${voteRequest.lastLogIndex}"
+        + s"| LastLogTerm: ${voteRequest.lastLogTerm}"
+    )
 
     // If we hear a vote request from an earlier term, reply with current term and don't grant vote.
     if (voteRequest.term < term) {
-      nodes(src).send(ParticipantInbound().withVoteResponse(VoteResponse(term = term, voteGranted = false)))
+      nodes(src).send(
+        ParticipantInbound().withVoteResponse(
+          VoteResponse(term = term, voteGranted = false)
+        )
+      )
       return
     }
 
@@ -237,7 +245,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       val t = noPingTimer()
       t.start()
       state = LeaderlessFollower(t)
-      nodes(src).send(ParticipantInbound().withVoteResponse(VoteResponse(term = term, voteGranted = true)))
+      nodes(src).send(
+        ParticipantInbound().withVoteResponse(
+          VoteResponse(term = term, voteGranted = true)
+        )
+      )
       return
     }
 
@@ -254,7 +266,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // If the vote request is from myself, then I'll vote for myself.
         // Otherwise, I won't vote for another candidate.
         if (src == address) {
-          nodes(src).send(ParticipantInbound().withVoteResponse(VoteResponse(term = term, voteGranted = true)))
+          nodes(src).send(
+            ParticipantInbound().withVoteResponse(
+              VoteResponse(term = term, voteGranted = true)
+            )
+          )
         }
       }
       case Leader(pingTimer) => {
@@ -264,10 +280,15 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def handleVoteResponse(src: Transport#Address, vote: VoteResponse): Unit = {
-    logger.info(s"Got VoteResponse from ${src}" 
-            + s"| Term: ${vote.term}"
-            + s"| VoteGranted = ${vote.voteGranted}")
+  private def handleVoteResponse(
+      src: Transport#Address,
+      vote: VoteResponse
+  ): Unit = {
+    logger.info(
+      s"Got VoteResponse from ${src}"
+        + s"| Term: ${vote.term}"
+        + s"| VoteGranted = ${vote.voteGranted}"
+    )
 
     // If we hear a vote from an earlier term, we ignore it.
     if (vote.term < term) {
@@ -324,7 +345,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           for (addr <- participants) {
             if (!addr.equals(address)) {
               nodes(addr).send(
-                ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
+                ParticipantInbound().withAppendEntriesRequest(
+                  AppendEntriesRequest(term = term,
+                                       prevLogIndex = getPrevLogIndex(),
+                                       prevLogTerm = getPrevLogTerm(),
+                                       entries = List(),
+                                       leaderCommit = commitIndex
+                  )
+                )
               )
             }
           }
@@ -339,29 +367,44 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def handleWriteCommandRequest(src: Transport#Address, cmdReq: WriteCommandRequest): Unit = {
-    logger.info(s"Got WriteCommandRequest from ${src}" 
-                + s"| Command: ${cmdReq.cmd}")
-  
+  private def handleClientRequest(
+      src: Transport#Address,
+      clientRequest: ClientRequest
+  ): Unit = {
+    logger.info(
+      s"Got ClientRequest from ${src}"
+        + s"| Command: ${clientRequest.cmd}"
+    )
+
     state match {
-      case LeaderlessFollower(noPingTimer) => {
+      case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd, index = -1)))
+        clients(src).send(
+          ClientInbound().withClientRequestResponse(
+            ClientRequestResponse(success = false,
+                                  response = "NOT_LEADER",
+                                  leaderHint = rand.nextInt(nodes.size)
+            )
+          )
+        )
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
         val leaderIndex = participants.indexOf(leader)
-        clients(src).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = false, leaderIndex = leaderIndex, cmd = cmdReq.cmd, index = -1)))
-      }
-      case Candidate(notEnoughVotesTimer, votes) => {
-        // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = cmdReq.cmd, index = -1)))
+        clients(src).send(
+          ClientInbound().withClientRequestResponse(
+            ClientRequestResponse(success = false,
+                                  response = "NOT_LEADER",
+                                  leaderHint = leaderIndex
+            )
+          )
+        )
       }
       case Leader(pingTimer) => {
         // leader can handle client requests directly
 
         // add cmd to leader log
-        log.append(LogEntry(term = term, command = cmdReq.cmd))
+        log.append(LogEntry(term = term, command = clientRequest.cmd))
 
         // keep track of which client is associated with this log entry
         clientWriteReturn.update(getPrevLogIndex(), clients(src))
@@ -376,39 +419,63 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def handleReadCommandRequest(src: Transport#Address, cmdReq: ReadCommandRequest): Unit = {
-    logger.info(s"Got ReadCommandRequest from ${src}" 
-                + s"| Index: ${cmdReq.index}")
-  
+  private def handleClientQuery(
+      src: Transport#Address,
+      clientQuery: ClientQuery
+  ): Unit = {
+    logger.info(
+      s"Got ClientQuery from ${src}"
+        + s"| Index: ${clientQuery.index}"
+    )
+
     state match {
-      case LeaderlessFollower(noPingTimer) => {
+      case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = "", index = -1)))
+        clients(src).send(
+          ClientInbound().withClientQueryResponse(
+            ClientQueryResponse(success = false,
+                                response = "NOT_LEADER",
+                                leaderHint = rand.nextInt(nodes.size)
+            )
+          )
+        )
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
         val leaderIndex = participants.indexOf(leader)
-        clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = false, leaderIndex = leaderIndex, cmd = "", index = -1)))
-      }
-      case Candidate(notEnoughVotesTimer, votes) => {
-        // don't know real leader, so pick a random other node
-        clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = false, leaderIndex = rand.nextInt(nodes.size), cmd = "", index = -1)))
+        clients(src).send(
+          ClientInbound().withClientQueryResponse(
+            ClientQueryResponse(success = false,
+                                response = "NOT_LEADER",
+                                leaderHint = leaderIndex
+            )
+          )
+        )
       }
       case Leader(pingTimer) => {
         // leader can handle client requests directly
 
         // command is committed in log, return immediately
-        if (cmdReq.index <= commitIndex) {
+        if (clientQuery.index <= commitIndex) {
           val leaderIndex = participants.indexOf(leader)
-          clients(src).send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = true, leaderIndex = leaderIndex, cmd = log(cmdReq.index).command, index = cmdReq.index)))
+          clients(src).send(
+            ClientInbound().withClientQueryResponse(
+              ClientQueryResponse(success = true,
+                                  response = log(clientQuery.index).command,
+                                  leaderHint = leaderIndex
+              )
+            )
+          )
         } else {
           // otherwise, keep this request around and service it when index commits
-          clientReadReturn get cmdReq.index match {
-            case Some(res) => clientReadReturn(cmdReq.index).append(clients(src))
+          clientReadReturn get clientQuery.index match {
+            case Some(res) =>
+              clientReadReturn(clientQuery.index).append(clients(src))
             case None => {
-              var clientReads: ArrayBuffer[Chan[Client[Transport]]] = new ArrayBuffer[Chan[Client[Transport]]](0)
+              var clientReads: ArrayBuffer[Chan[Client[Transport]]] =
+                new ArrayBuffer[Chan[Client[Transport]]](0)
               clientReads.append(clients(src))
-              clientReadReturn.update(cmdReq.index, clientReads)
+              clientReadReturn.update(clientQuery.index, clientReads)
             }
           }
         }
@@ -416,18 +483,29 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-
-  private def handleAppendEntriesRequest(src: Transport#Address, appReq: AppendEntriesRequest): Unit = {
-    logger.info(s"Got AppendEntriesRequest from ${src}" 
-                + s"| Term: ${appReq.term}"
-                + s"| PrevLogIndex = ${appReq.prevLogIndex}"
-                + s"| PrevLogTerm: ${appReq.prevLogTerm}" 
-                + s"| Leader Commit: ${appReq.leaderCommit}"
-                + s"| Entries: ${appReq.entries}")
+  private def handleAppendEntriesRequest(
+      src: Transport#Address,
+      appReq: AppendEntriesRequest
+  ): Unit = {
+    logger.info(
+      s"Got AppendEntriesRequest from ${src}"
+        + s"| Term: ${appReq.term}"
+        + s"| PrevLogIndex = ${appReq.prevLogIndex}"
+        + s"| PrevLogTerm: ${appReq.prevLogTerm}"
+        + s"| Leader Commit: ${appReq.leaderCommit}"
+        + s"| Entries: ${appReq.entries}"
+    )
 
     // If we hear a ping from an earlier term, return false and term.
     if (appReq.term < term) {
-      nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false, lastLogIndex = getPrevLogIndex())))
+      nodes(src).send(
+        ParticipantInbound().withAppendEntriesResponse(
+          AppendEntriesResponse(term = term,
+                                success = false,
+                                lastLogIndex = getPrevLogIndex()
+          )
+        )
+      )
       return
     }
 
@@ -456,7 +534,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         if (appReq.entries.length > 0) {
           // check that log contains entry at prevLogIndex with term == prevLogTerm
           if (!checkPrevEntry(appReq.prevLogIndex, appReq.prevLogIndex)) {
-            nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = false, lastLogIndex = getPrevLogIndex())))
+            nodes(src).send(
+              ParticipantInbound().withAppendEntriesResponse(
+                AppendEntriesResponse(term = term,
+                                      success = false,
+                                      lastLogIndex = getPrevLogIndex()
+                )
+              )
+            )
             return
           }
 
@@ -465,7 +550,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           applyEntries(appReq.prevLogIndex + 1, appReq.entries)
 
           // send success response
-          nodes(src).send(ParticipantInbound().withAppendEntriesResponse(AppendEntriesResponse(term = term, success = true, lastLogIndex = getPrevLogIndex())))
+          nodes(src).send(
+            ParticipantInbound().withAppendEntriesResponse(
+              AppendEntriesResponse(term = term,
+                                    success = true,
+                                    lastLogIndex = getPrevLogIndex()
+              )
+            )
+          )
         }
       }
       case Candidate(notEnoughVotesTimer, votes) => {
@@ -478,11 +570,16 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def handleAppendEntriesResponse(src: Transport#Address, appRes: AppendEntriesResponse): Unit = {
-    logger.info(s"Got AppendEntriesResponse from ${src}" 
-                + s"| Term: ${appRes.term}"
-                + s"| Success = ${appRes.success}"
-                + s"| LastLogIndex = ${appRes.lastLogIndex}")
+  private def handleAppendEntriesResponse(
+      src: Transport#Address,
+      appRes: AppendEntriesResponse
+  ): Unit = {
+    logger.info(
+      s"Got AppendEntriesResponse from ${src}"
+        + s"| Term: ${appRes.term}"
+        + s"| Success = ${appRes.success}"
+        + s"| LastLogIndex = ${appRes.lastLogIndex}"
+    )
 
     // If we hear from a leader in a larger term, then we immediately become a
     // follower of that leader.
@@ -527,7 +624,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           // service pending write requests
           for ((index, client) <- clientWriteReturn) {
             if (commitIndex >= index) {
-              clientWriteReturn(index).send(ClientInbound().withWriteCmdResponse(WriteCommandResponse(success = true, leaderIndex = leaderIndex, cmd = "", index = index)))
+              clientWriteReturn(index).send(
+                ClientInbound().withClientRequestResponse(
+                  ClientRequestResponse(success = true,
+                                        response = "OK",
+                                        leaderHint = leaderIndex,
+                  )
+                )
+              )
               clientWriteReturn.remove(index)
             }
           }
@@ -536,13 +640,19 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           for ((index, client) <- clientReadReturn) {
             if (commitIndex >= index) {
               for (addr <- clientReadReturn(index)) {
-                addr.send(ClientInbound().withReadCmdResponse(ReadCommandResponse(success = true, leaderIndex = leaderIndex, cmd = log(index).command, index = index)))
+                addr.send(
+                  ClientInbound().withClientQueryResponse(
+                    ClientQueryResponse(success = true,
+                                        response = log(index).command,
+                                        leaderHint = leaderIndex,
+                    )
+                  )
+                )
               }
               clientReadReturn.remove(index)
             }
           }
-        }
-        else {
+        } else {
           // decrement nextIndex for follower (src) and retry AppendEntriesRequest
           nextIndex.update(src, nextIndex(src) - 1)
           sendAppEntReq(src)
@@ -583,7 +693,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         for (addr <- participants) {
           if (!addr.equals(address)) {
             nodes(addr).send(
-              ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = getPrevLogIndex(), prevLogTerm = getPrevLogTerm(), entries = List(), leaderCommit = commitIndex))
+              ParticipantInbound().withAppendEntriesRequest(
+                AppendEntriesRequest(term = term,
+                                     prevLogIndex = getPrevLogIndex(),
+                                     prevLogTerm = getPrevLogTerm(),
+                                     entries = List(),
+                                     leaderCommit = commitIndex
+                )
+              )
             )
           }
         }
@@ -657,7 +774,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
     for (address <- participants) {
       nodes(address).send(
-        ParticipantInbound().withVoteRequest(VoteRequest(term = term, lastLogIndex = getPrevLogIndex(), lastLogTerm = getLastLogTerm()))
+        ParticipantInbound().withVoteRequest(
+          VoteRequest(term = term,
+                      lastLogIndex = getPrevLogIndex(),
+                      lastLogTerm = getLastLogTerm()
+          )
+        )
       )
     }
   }
@@ -709,7 +831,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   private def sendAppEntReq(address: Transport#Address): Unit = {
     logger.info(s"Sending AppendEntriesRequest to ${address}")
-    
+
     val prevLogIndex = nextIndex(address) - 1
     val prevLogTerm = log(prevLogIndex).term
 
@@ -720,7 +842,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
 
     nodes(address).send(
-      ParticipantInbound().withAppendEntriesRequest(AppendEntriesRequest(term = term, prevLogIndex = prevLogIndex, prevLogTerm = prevLogTerm, entries = entries, leaderCommit = commitIndex))
+      ParticipantInbound().withAppendEntriesRequest(
+        AppendEntriesRequest(term = term,
+                             prevLogIndex = prevLogIndex,
+                             prevLogTerm = prevLogTerm,
+                             entries = entries,
+                             leaderCommit = commitIndex
+        )
+      )
     )
   }
 
