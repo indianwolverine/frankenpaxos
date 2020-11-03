@@ -95,7 +95,12 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             logger.info(
               s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}."
             )
-            write(pendingWrite.cmd)
+            writeImpl(pendingWrite.cmd)
+          } else {
+            logger.info(
+              s"PendingWrite failed: ${pendingWrite}."
+            )
+            pendingWrite.promise.failure(new Exception("Write failed"))
           }
         } else {
           logger.info("Command successfully replicated!")
@@ -131,7 +136,12 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             logger.info(
               s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}."
             )
-            read(pendingRead.index)
+            readImpl(pendingRead.index)
+          } else {
+            logger.info(
+              s"PendingRead failed: ${pendingRead}."
+            )
+            pendingRead.promise.failure(new Exception("Read failed"))
           }
         } else {
           logger.info("Command successfully replicated!")
