@@ -3,43 +3,49 @@ let client_info = {
   
     data: function() {
       return {
-        message: "",
-        readIndex: "",
+        cmd: "",
+        index: "",
+        write_result: null,
+        read_result: null
       };
     },
   
     methods: {
-      writeCommand: function() {
-        if (this.message === "") {
+      write: function() {
+        if (this.cmd === "") {
           return;
         }
-        this.node.actor.writeCommand(this.message);
-        this.message = "";
+        future = this.node.actor.write(this.cmd);
+        this.cmd = "";
+        this.write_result = future
+        console.log(future)
       },
-      readCommand: function() {
-        if (this.readIndex === "") {
+      read: function() {
+        if (this.index === "") {
           return;
         }
-        this.node.actor.readCommand(parseInt(this.readIndex));
-        this.readIndex = "";
+        future = this.node.actor.read(parseInt(this.index));
+        this.index = "";
+        this.read_result = future
+        console.log(future)
       }
     },
   
     template: `
       <div>
+        <div><strong>Leader Index</strong>: {{node.actor.leaderIndex}} </div>
+        <div><strong>Participants</strong>: {{node.actor.raftParticipants}} </div>
+        <div><strong>Pending Action</strong>: {{this.node.actor.pending}} </div>
         <div>
-          <button v-on:click="writeCommand">Send Command</button>
-          <input v-model="message" v-on:keyup.enter="writeCommand"></input>
+          <button v-on:click="write">Write Command</button>
+          <input v-model="cmd" v-on:keyup.enter="write"></input>
+          <span> Write result: {{write_result}} </span>
         </div>
-
         <div>
-          <button v-on:click="readCommand">Read Command</button>
-          <input v-model="readIndex" v-on:keyup.enter="readCommand"></input>
+          <button v-on:click="read">Read Index</button>
+          <input v-model="index" v-on:keyup.enter="read"></input>
+          <span> Read result: {{read_result}} </span>
         </div>
-
-        <div><strong>Leader Index</strong>: {{node.actor.leaderIndex}}</div>
-        <div><strong>Participants</strong>: {{node.actor.raftParticipants}}</div>
-
       </div>
     `,
   };
