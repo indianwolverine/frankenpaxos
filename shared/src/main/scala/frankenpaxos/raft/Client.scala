@@ -47,13 +47,15 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   @JSExportAll
   case class PendingWrite(
       promise: Promise[Boolean],
-      cmd: String
+      cmd: String,
+      resendTimer: Transport#Timer
   ) extends PendingState
 
   @JSExportAll
   case class PendingRead(
       promise: Promise[String],
-      index: Integer
+      index: Integer,
+      resendTimer: Transport#Timer
   ) extends PendingState
 
   var pending: Option[PendingState] = None
@@ -77,6 +79,36 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
 
   // Helpers
 
+  private def makePendingWriteResendTimer(
+      cmd: String
+  ): Transport#Timer = {
+    lazy val t: Transport#Timer = timer(
+      s"resendPendingWrite",
+      java.time.Duration.ofSeconds(10),
+      () => {
+        writeImpl(cmd)
+        t.start()
+      }
+    )
+    t.start()
+    t
+  }
+
+  private def makePendingReadResendTimer(
+      index: Integer
+  ): Transport#Timer = {
+    lazy val t: Transport#Timer = timer(
+      s"resendPendingWrite",
+      java.time.Duration.ofSeconds(10),
+      () => {
+        readImpl(index)
+        t.start()
+      }
+    )
+    t.start()
+    t
+  }
+
   private def handleClientRequestResponse(
       src: Transport#Address,
       requestResponse: ClientRequestResponse
@@ -89,6 +121,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     )
     pending match {
       case Some(pendingWrite: PendingWrite) =>
+        pendingWrite.resendTimer.stop()
         if (!requestResponse.success) {
           if (requestResponse.response == "NOT_LEADER") {
             leaderIndex = requestResponse.leaderHint
@@ -130,6 +163,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       case Some(pendingWrite: PendingWrite) =>
         logger.error("Request response received while no pending write exists.")
       case Some(pendingRead: PendingRead) =>
+        pendingRead.resendTimer.stop()
         if (!queryResponse.success) {
           if (queryResponse.response == "NOT_LEADER") {
             leaderIndex = queryResponse.leaderHint
@@ -177,7 +211,8 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     pending = Some(
       PendingWrite(
         promise = promise,
-        cmd = cmd
+        cmd = cmd,
+        resendTimer = makePendingWriteResendTimer(cmd)
       )
     )
     transport.executionContext().execute(() => writeImpl(cmd))
@@ -192,7 +227,8 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     pending = Some(
       PendingRead(
         promise = promise,
-        index = index
+        index = index,
+        resendTimer = makePendingReadResendTimer(index)
       )
     )
     transport.executionContext().execute(() => readImpl(index))
