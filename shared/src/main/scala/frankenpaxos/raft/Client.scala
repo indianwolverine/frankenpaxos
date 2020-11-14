@@ -3,6 +3,7 @@ package frankenpaxos.raft
 import frankenpaxos.{Actor, Chan, Logger, ProtoSerializer}
 import scala.concurrent.{Future, Promise}
 import scala.scalajs.js.annotation._
+import scala.util.Random
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -19,6 +20,8 @@ object Client {
   val serializer = ClientInboundSerializer
 }
 
+// Key assumption - if client goes down it does not come back up. If this was
+// possible sequence numbers and client sessions would need to be implemented.
 @JSExportAll
 class Client[Transport <: frankenpaxos.Transport[Transport]](
     srcAddress: Transport#Address,
@@ -39,6 +42,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
 
   // index of presumed leader
   var leaderIndex = 0
+
+  // random
+  val rand = new Random();
 
   // pending action - No need for lock since client acts synchronously
   @JSExportAll
@@ -86,6 +92,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       s"resendPendingWrite",
       java.time.Duration.ofSeconds(10),
       () => {
+        leaderIndex = rand.nextInt(raftParticipants.size)
         writeImpl(cmd)
         t.start()
       }
@@ -101,6 +108,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       s"resendPendingWrite",
       java.time.Duration.ofSeconds(10),
       () => {
+        leaderIndex = rand.nextInt(raftParticipants.size)
         readImpl(index)
         t.start()
       }

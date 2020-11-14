@@ -346,11 +346,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             if (!addr.equals(address)) {
               nodes(addr).send(
                 ParticipantInbound().withAppendEntriesRequest(
-                  AppendEntriesRequest(term = term,
-                                       prevLogIndex = getPrevLogIndex(),
-                                       prevLogTerm = getPrevLogTerm(),
-                                       entries = List(),
-                                       leaderCommit = commitIndex
+                  AppendEntriesRequest(
+                    term = term,
+                    prevLogIndex = getPrevLogIndex(),
+                    prevLogTerm = getPrevLogTerm(),
+                    entries = List(LogEntry(term = term, command = "noop")),
+                    leaderCommit = commitIndex
                   )
                 )
               )
@@ -628,7 +629,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                 ClientInbound().withClientRequestResponse(
                   ClientRequestResponse(success = true,
                                         response = "OK",
-                                        leaderHint = leaderIndex,
+                                        leaderHint = leaderIndex
                   )
                 )
               )
@@ -644,7 +645,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                   ClientInbound().withClientQueryResponse(
                     ClientQueryResponse(success = true,
                                         response = log(index).command,
-                                        leaderHint = leaderIndex,
+                                        leaderHint = leaderIndex
                     )
                   )
                 )
