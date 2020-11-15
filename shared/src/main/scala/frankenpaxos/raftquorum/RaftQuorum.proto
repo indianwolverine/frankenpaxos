@@ -1,0 +1,48 @@
+syntax = "proto2";
+
+package frankenpaxos.raftquorum;
+
+import "scalapb/scalapb.proto";
+import "frankenpaxos/raft/Raft.proto";
+
+option (scalapb.options) = {
+  package_name: "frankenpaxos.raftquorum"
+  flat_package: true
+};
+
+// Participant Requests
+
+// Client Requests
+
+// Reads specific to LRQR
+message ClientQuorumQuery {
+  required int32 index = 1;
+}
+
+message ClientQuorumQueryResponse {
+  required bool success = 1;
+  required int32 latest_accepted = 2;
+  required int32 latest_committed = 3;
+}
+
+// Expected messages to recieve
+
+message QuorumParticipantInbound {
+  oneof request {
+    frankenpaxos.raft.VoteRequest vote_request = 1;
+    frankenpaxos.raft.VoteResponse vote_response = 2;
+    frankenpaxos.raft.AppendEntriesRequest append_entries_request = 3;
+    frankenpaxos.raft.AppendEntriesResponse append_entries_response = 4;
+    frankenpaxos.raft.ClientRequest client_request = 5;
+    frankenpaxos.raft.ClientQuery client_query = 6;
+    ClientQuorumQuery client_quorum_query = 7;
+  }
+}
+
+message QuorumClientInbound {
+  oneof request {
+    frankenpaxos.raft.ClientRequestResponse client_request_response = 1;
+    frankenpaxos.raft.ClientQueryResponse client_query_response = 2;
+    ClientQuorumQueryResponse client_quorum_query_response = 3;
+  }
+}
