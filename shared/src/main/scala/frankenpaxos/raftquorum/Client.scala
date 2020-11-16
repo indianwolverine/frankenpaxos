@@ -170,8 +170,17 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
 
   private def readImpl(index: Int): Unit = {
     // raftParticipants(leaderIndex).send(
-    //   QuorumParticipantInbound().withClientQuery(ClientQuery(index = index))
+    //   QuorumParticipantInbound().withClientQuorumQuery(ClientQuorumQuery(index = index))
     // )
+    
+    // - send req to random majority of participants with queryIndex 0
+    // - set state to pending read
+    // - once majority has replied
+    //   - get max last accepted
+    //   - if commitindex >= last accepted for that participant
+    //       - read is done, return command read
+    //   - else 
+    //       - send req with queryIndex = max last accepted to random participant until returned commit index >= queryIndex
   }
 
   // Interface
