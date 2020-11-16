@@ -43,6 +43,18 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   // random
   val rand = new Random();
 
+  // read quorum
+  var readQuorum = Set[Transport#Address]();
+
+  // response
+  var response = "";
+
+  // latest accepted
+  var latestAccepted = 0;
+
+  // latest committed 
+  var latestCommitted = 0;
+
   // pending action - No need for lock since client acts synchronously
   @JSExportAll
   sealed trait PendingState
@@ -158,7 +170,48 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   private def handleClientQuorumQueryResponse(
       src: Transport#Address,
       quorumQueryResponse: ClientQuorumQueryResponse
-  ) {}
+  ) {
+    logger.info(
+      s"Got ClientQuorumQueryResponse from ${src}"
+        + s"| Success: ${quorumQueryResponse.success}"
+        + s"| Latest Accepted: ${quorumQueryResponse.latestAccepted}"
+        + s"| Latest Committed: ${quorumQueryResponse.latestCommitted}"
+        + s"| Response ${quorumQueryResponse.response}"
+    )
+    pending match {
+      case Some(_: PendingWrite) =>
+        logger.error("Request response received while no pending write exists.")
+      case Some(pendingRead: PendingRead) =>
+        if (quorumQueryResponse.success) {
+          pendingRead.resendTimer.reset()
+          readQuorum += src
+          if (quorumQueryResponse.latestAccepted >= latestAccepted) {
+            latestAccepted = quorumQueryResponse.latestAccepted
+            latestCommitted = latestCommitted.max(quorumQueryResponse.latestCommitted)
+            response = quorumQueryResponse.response
+          }
+          // a quorum has replied
+          if (readQuorum.size >= (raftParticipants.size / 2 + 1)) {
+            // no need to rinse
+            if (latestCommitted >= latestAccepted) {
+              pendingRead.resendTimer.stop()
+              readQuorum = Set[Transport#Address]()
+              latestAccepted = 0
+              latestCommitted = 0
+              response = ""
+              pendingRead.promise.success(response)
+              pending = None
+            } else { 
+              readImpl(latestAccepted)
+            }
+          } 
+        }
+      case None =>
+        logger.error(
+          "Request response received while no pending action exists."
+        )
+    }
+  }
 
   private def writeImpl(cmd: String): Unit = {
     raftParticipants(leaderIndex).send(
@@ -169,18 +222,25 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def readImpl(index: Int): Unit = {
-    // raftParticipants(leaderIndex).send(
-    //   QuorumParticipantInbound().withClientQuorumQuery(ClientQuorumQuery(index = index))
-    // )
-    
-    // - send req to random majority of participants with queryIndex 0
-    // - set state to pending read
-    // - once majority has replied
-    //   - get max last accepted
-    //   - if commitindex >= last accepted for that participant
-    //       - read is done, return command read
-    //   - else 
-    //       - send req with queryIndex = max last accepted to random participant until returned commit index >= queryIndex
+    if (index == 0) {
+      // use shuffle to get n/2 + 1 random indices
+      val participantsRandomized = rand.shuffle(raftParticipants)
+
+      for (i <- 0 until (raftParticipants.size / 2) + 1) {
+        participantsRandomized(i).send(
+          QuorumParticipantInbound().withClientQuorumQuery(
+            ClientQuorumQuery(index = index)
+          )
+        )
+      }
+    } else if (index > 0) { // rinse index or read at index specifically
+      val participantIndex = rand.nextInt(raftParticipants.size)
+      raftParticipants(participantIndex).send(
+        QuorumParticipantInbound().withClientQuorumQuery(
+            ClientQuorumQuery(index = index)
+        )
+      )
+    }
   }
 
   // Interface
