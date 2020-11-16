@@ -34,15 +34,13 @@ message QuorumParticipantInbound {
     frankenpaxos.raft.AppendEntriesRequest append_entries_request = 3;
     frankenpaxos.raft.AppendEntriesResponse append_entries_response = 4;
     frankenpaxos.raft.ClientRequest client_request = 5;
-    frankenpaxos.raft.ClientQuery client_query = 6;
-    ClientQuorumQuery client_quorum_query = 7;
+    ClientQuorumQuery client_quorum_query = 6;
   }
 }
 
 message QuorumClientInbound {
   oneof request {
     frankenpaxos.raft.ClientRequestResponse client_request_response = 1;
-    frankenpaxos.raft.ClientQueryResponse client_query_response = 2;
-    ClientQuorumQueryResponse client_quorum_query_response = 3;
+    ClientQuorumQueryResponse client_quorum_query_response = 2;
   }
 }
