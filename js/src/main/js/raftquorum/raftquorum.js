@@ -72,7 +72,7 @@ let raft_state_colors = {
   leader: '#e74c3c',
 }
 
-function make_nodes(Raft, snap) {
+function make_nodes(RaftQuorum, snap) {
   // https://flatuicolors.com/palette/defo
   let flat_red = '#e74c3c';
   let flat_blue = '#3498db';
@@ -121,8 +121,8 @@ function make_nodes(Raft, snap) {
   let [tdx, tdy] = polar_to_cartesian(x_origin, y_origin, 4 * theta, r + 40);
   let [tex, tey] = polar_to_cartesian(x_origin, y_origin, 5 * theta, r + 40);
 
-  nodes[Raft.participant1.address] = {
-    actor: Raft.participant1,
+  nodes[RaftQuorum.participant1.address] = {
+    actor: RaftQuorum.participant1,
     svgs: [
       snap.circle(ax, ay, 20).attr(colored(raft_state_colors.leaderless_follower)),
       snap.text(ax, ay, '0').attr(title_attr),
@@ -130,8 +130,8 @@ function make_nodes(Raft, snap) {
     ],
     component: participant_info,
   };
-  nodes[Raft.participant2.address] = {
-    actor: Raft.participant2,
+  nodes[RaftQuorum.participant2.address] = {
+    actor: RaftQuorum.participant2,
     svgs: [
       snap.circle(bx, by, 20).attr(colored(raft_state_colors.leaderless_follower)),
       snap.text(bx, by, '0').attr(title_attr),
@@ -139,8 +139,8 @@ function make_nodes(Raft, snap) {
     ],
     component: participant_info,
   };
-  nodes[Raft.participant3.address] = {
-    actor: Raft.participant3,
+  nodes[RaftQuorum.participant3.address] = {
+    actor: RaftQuorum.participant3,
     svgs: [
       snap.circle(cx, cy, 20).attr(colored(raft_state_colors.leaderless_follower)),
       snap.text(cx, cy, '0').attr(title_attr),
@@ -148,8 +148,8 @@ function make_nodes(Raft, snap) {
     ],
     component: participant_info,
   };
-  nodes[Raft.participant4.address] = {
-    actor: Raft.participant4,
+  nodes[RaftQuorum.participant4.address] = {
+    actor: RaftQuorum.participant4,
     svgs: [
       snap.circle(dx, dy, 20).attr(colored(raft_state_colors.leaderless_follower)),
       snap.text(dx, dy, '0').attr(title_attr),
@@ -157,8 +157,8 @@ function make_nodes(Raft, snap) {
     ],
     component: participant_info,
   };
-  nodes[Raft.participant5.address] = {
-    actor: Raft.participant5,
+  nodes[RaftQuorum.participant5.address] = {
+    actor: RaftQuorum.participant5,
     svgs: [
       snap.circle(ex, ey, 20).attr(colored(raft_state_colors.leaderless_follower)),
       snap.text(ex, ey, '0').attr(title_attr),
@@ -168,8 +168,8 @@ function make_nodes(Raft, snap) {
   };
 
   // Clients.
-  nodes[Raft.client1.address] = {
-    actor: Raft.client1,
+  nodes[RaftQuorum.client1.address] = {
+    actor: RaftQuorum.client1,
     svgs: [
       snap.circle(0, 50, 20).attr(colored(flat_red)),
       snap.text(0, 52, '1').attr(number_style),
@@ -177,8 +177,8 @@ function make_nodes(Raft, snap) {
     color: flat_red,
     component: client_info,
   }
-  nodes[Raft.client2.address] = {
-    actor: Raft.client2,
+  nodes[RaftQuorum.client2.address] = {
+    actor: RaftQuorum.client2,
     svgs: [
       snap.circle(0, 150, 20).attr(colored(flat_red)),
       snap.text(0, 152, '2').attr(number_style),
@@ -186,8 +186,8 @@ function make_nodes(Raft, snap) {
     color: flat_red,
     component: client_info,
   }
-  nodes[Raft.client3.address] = {
-    actor: Raft.client3,
+  nodes[RaftQuorum.client3.address] = {
+    actor: RaftQuorum.client3,
     svgs: [
       snap.circle(0, 250, 20).attr(colored(flat_red)),
       snap.text(0, 252, '3').attr(number_style),
@@ -200,10 +200,10 @@ function make_nodes(Raft, snap) {
 }
 
 function main() {
-  let Raft =
-    frankenpaxos.raft.TweenedRaft.Raft;
+  let RaftQuorum =
+    frankenpaxos.raftquorum.TweenedRaftQuorum.RaftQuorum;
   let snap = Snap('#animation');
-  let nodes = make_nodes(Raft, snap);
+  let nodes = make_nodes(RaftQuorum, snap);
 
   let state_to_color = function (state) {
     // scala.js does not let you nicely pattern match on an ADT. Thus, we do
@@ -234,18 +234,18 @@ function main() {
 
     data: {
       nodes: nodes,
-      node: nodes[Raft.participant1.address],
-      transport: Raft.transport,
+      node: nodes[RaftQuorum.participant1.address],
+      transport: RaftQuorum.transport,
       settings: {
         time_scale: 1,
         auto_deliver_messages: true,
         auto_start_timers: true,
       },
-      a: nodes[Raft.participant1.address],
-      b: nodes[Raft.participant2.address],
-      c: nodes[Raft.participant3.address],
-      d: nodes[Raft.participant4.address],
-      e: nodes[Raft.participant5.address],
+      a: nodes[RaftQuorum.participant1.address],
+      b: nodes[RaftQuorum.participant2.address],
+      c: nodes[RaftQuorum.participant3.address],
+      d: nodes[RaftQuorum.participant4.address],
+      e: nodes[RaftQuorum.participant5.address],
     },
 
     methods: {
