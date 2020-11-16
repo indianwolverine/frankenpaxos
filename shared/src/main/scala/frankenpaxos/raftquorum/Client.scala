@@ -115,7 +115,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
       index: Integer
   ): Transport#Timer = {
     lazy val t: Transport#Timer = timer(
-      s"resendPendingWrite",
+      s"resendPendingRead",
       java.time.Duration.ofSeconds(10),
       () => {
         leaderIndex = rand.nextInt(raftParticipants.size)
@@ -190,18 +190,25 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
             latestCommitted = latestCommitted.max(quorumQueryResponse.latestCommitted)
             response = quorumQueryResponse.response
           }
-          // a quorum has replied
-          if (readQuorum.size >= (raftParticipants.size / 2 + 1)) {
+          // a quorum has replied or we are rinsing a read
+          if (readQuorum.size >= (raftParticipants.size / 2 + 1) || pendingRead.index > 0) {
+            pendingRead.resendTimer.stop()
             // no need to rinse
             if (latestCommitted >= latestAccepted) {
-              pendingRead.resendTimer.stop()
               readQuorum = Set[Transport#Address]()
               latestAccepted = 0
               latestCommitted = 0
               response = ""
               pendingRead.promise.success(response)
               pending = None
-            } else { 
+            } else { // rinse read
+              pending = Some(
+                PendingRead(
+                    promise = Promise[String](),
+                    index = latestAccepted,
+                    resendTimer = makePendingReadResendTimer(latestAccepted)
+                )
+              )
               readImpl(latestAccepted)
             }
           } 
@@ -233,7 +240,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
           )
         )
       }
-    } else if (index > 0) { // rinse index or read at index specifically
+    } else if (index > 0) { // rinse index
       val participantIndex = rand.nextInt(raftParticipants.size)
       raftParticipants(participantIndex).send(
         QuorumParticipantInbound().withClientQuorumQuery(

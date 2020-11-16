@@ -358,7 +358,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
                     term = term,
                     prevLogIndex = getPrevLogIndex(),
                     prevLogTerm = getPrevLogTerm(),
-                    entries = List(LogEntry(term = term, command = "noop")),
+                    entries = List(),
                     leaderCommit = commitIndex
                   )
                 )
