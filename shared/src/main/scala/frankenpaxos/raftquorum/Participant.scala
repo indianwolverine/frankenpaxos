@@ -437,59 +437,54 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         + s"| Index: ${clientQuorumQuery.index}"
     )
 
-    // state match {
-    //   case LeaderlessFollower(_) | Candidate(_, _) => {
-    //     // don't know real leader, so pick a random other node
-    //     clients(src).send(
-    //       QuorumClientInbound().withClientQuorumQueryResponse(
-    //         ClientQuorumQueryResponse(success = false,
-    //                                   response = "NOT_LEADER",
-    //                                   leaderHint = rand.nextInt(nodes.size)
-    //         )
-    //       )
-    //     )
-    //   }
-    //   case Follower(noPingTimer, leader) => {
-    //     // we know leader, so send back index of leader
-    //     val leaderIndex = participants.indexOf(leader)
-    //     clients(src).send(
-    //       QuorumClientInbound().withClientQuorumQueryResponse(
-    //         ClientQuorumQueryResponse(success = false,
-    //                             response = "NOT_LEADER",
-    //                             leaderHint = leaderIndex
-    //         )
-    //       )
-    //     )
-    //   }
-    //   case Leader(pingTimer) => {
-    //     // leader can handle client requests directly
-
-    //     // command is committed in log, return immediately
-    //     if (clientQuorumQuery.index <= commitIndex) {
-    //       val leaderIndex = participants.indexOf(leader)
-    //       clients(src).send(
-    //         QuorumClientInbound().withClientQuorumQueryResponse(
-    //           ClientQuorumQueryResponse(success = true,
-    //                               response = log(clientQuery.index).command,
-    //                               leaderHint = leaderIndex
-    //           )
-    //         )
-    //       )
-    //     } else {
-    //       // otherwise, keep this request around and service it when index commits
-    //       clientReadReturn get clientQuorumQuery.index match {
-    //         case Some(res) =>
-    //           clientReadReturn(clientQuery.index).append(clients(src))
-    //         case None => {
-    //           var clientReads: ArrayBuffer[Chan[QuorumClient[Transport]]] =
-    //             new ArrayBuffer[Chan[QuorumClient[Transport]]](0)
-    //           clientReads.append(clients(src))
-    //           clientReadReturn.update(clientQuorumQuery.index, clientReads)
-    //         }
-    //       }
-    //     }
-    //   }
-    // }
+    state match {
+      case LeaderlessFollower(_) | Candidate(_, _) => {
+        // don't know real leader, so pick a random other node
+        clients(src).send(
+          QuorumClientInbound().withClientQuorumQueryResponse(
+            ClientQuorumQueryResponse(success = false,
+                                      latestAccepted = getPrevLogIndex(),
+                                      latestCommitted = commitIndex,
+                                      response = "NOT_LEADER",
+            )
+          )
+        )
+      }
+      case Follower(_, _) | Leader(_) => {
+        // index of 0 indicates read is for latest command
+        if (clientQuorumQuery.index == 0) {
+          clients(src).send(
+            QuorumClientInbound().withClientQuorumQueryResponse(
+              ClientQuorumQueryResponse(success = true,
+                                        latestAccepted = getPrevLogIndex(),
+                                        latestCommitted = commitIndex,
+                                        response = log(getPrevLogIndex()).command,
+              )
+            )
+          )
+        } else if (clientQuorumQuery.index > 0 && commitIndex >= clientQuorumQuery.index) {
+          clients(src).send(
+            QuorumClientInbound().withClientQuorumQueryResponse(
+              ClientQuorumQueryResponse(success = true,
+                                        latestAccepted = getPrevLogIndex(),
+                                        latestCommitted = commitIndex,
+                                        response = log(clientQuorumQuery.index).command,
+              )
+            )
+          )
+        } else {
+          clients(src).send(
+            QuorumClientInbound().withClientQuorumQueryResponse(
+              ClientQuorumQueryResponse(success = false,
+                                        latestAccepted = getPrevLogIndex(),
+                                        latestCommitted = commitIndex,
+                                        response = log(getPrevLogIndex()).command,
+              )
+            )
+          )
+        }
+      }
+    }
   }
 
   private def handleAppendEntriesRequest(
@@ -644,23 +639,6 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
               clientWriteReturn.remove(index)
             }
           }
-
-          // service pending read requests
-          // for ((index, client) <- clientReadReturn) {
-          //   if (commitIndex >= index) {
-          //     for (addr <- clientReadReturn(index)) {
-          //       addr.send(
-          //         QuorumClientInbound().withClientQueryResponse(
-          //           ClientQueryResponse(success = true,
-          //                               response = log(index).command,
-          //                               leaderHint = leaderIndex
-          //           )
-          //         )
-          //       )
-          //     }
-          //     clientReadReturn.remove(index)
-          //   }
-          // }
         } else {
           // decrement nextIndex for follower (src) and retry AppendEntriesRequest
           nextIndex.update(src, nextIndex(src) - 1)
