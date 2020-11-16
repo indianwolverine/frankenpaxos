@@ -1,7 +1,6 @@
 package frankenpaxos.raftquorum
 
 import scala.scalajs.js.annotation._
-import frankenpaxos.raft.Config
 import scala.concurrent.{Future, Promise}
 import frankenpaxos.{Actor, Logger, ProtoSerializer}
 import scala.util.Random
