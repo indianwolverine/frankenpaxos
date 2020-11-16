@@ -4,7 +4,6 @@ let client_info = {
   data: function () {
     return {
       cmd: "",
-      index: "",
     };
   },
 
@@ -17,11 +16,7 @@ let client_info = {
       this.cmd = "";
     },
     read: function () {
-      if (this.index === "") {
-        return;
-      }
-      console.log(this.node.actor.read(parseInt(this.index)));
-      this.index = "";
+      console.log(this.node.actor.read(0));
     }
   },
 
@@ -35,8 +30,7 @@ let client_info = {
           <input v-model="cmd" v-on:keyup.enter="write"></input>
         </div>
         <div>
-          <button v-on:click="read">Read Index</button>
-          <input v-model="index" v-on:keyup.enter="read"></input>
+          <button v-on:click="read">Read Latest</button>
         </div>
       </div>
     `,
