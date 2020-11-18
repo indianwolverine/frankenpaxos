@@ -24,7 +24,7 @@ message VoteResponse {
 
 message LogEntry {
   required int32 term = 1;
-  required string command = 2;
+  required CommandOrNoop command = 2;
 }
 
 message AppendEntriesRequest {
@@ -46,22 +46,22 @@ message AppendEntriesResponse {
 message ClientRequest {
   // required int32 client_id = 1;
   // required int32 sequence_num = 1; for eliminating duplicates
-  required string cmd = 1;
+  required CommandOrNoop cmd = 1;
 }
 
 message ClientRequestResponse {
   required bool success = 1;
-  required string response = 2;
+  required bytes response = 2;
   required int32 leader_hint = 3;
 }
 
 message ClientQuery {
-  required int32 index = 1;
+  required ReadCommand query = 1;
 }
 
 message ClientQueryResponse {
   required bool success = 1;
-  required string response = 2;
+  required bytes response = 2;
   required int32 leader_hint = 3;
 }
 
@@ -84,3 +84,38 @@ message ClientInbound {
     ClientQueryResponse client_query_response = 2;
   }
 }
+
+// State Machine stuff
+
+// A special noop command that does not affect the state machine.
+message Noop {
+  option (scalapb.message).annotations =
+    "@scala.scalajs.js.annotation.JSExportAll";
+}
+
+// State machine request, may modify state
+message Command {
+  option (scalapb.message).annotations =
+    "@scala.scalajs.js.annotation.JSExportAll";
+
+  required bytes cmd = 1;
+}
+
+// Read-only request for the state machine
+message ReadCommand {
+  option (scalapb.message).annotations =
+  "@scala.scalajs.js.annotation.JSExportAll";
+
+  required bytes query = 1;
+}
+
+message CommandOrNoop {
+  option (scalapb.message).annotations =
+    "@scala.scalajs.js.annotation.JSExportAll";
+
+  oneof value {
+    Command command = 1;
+    Noop noop = 2;
+  }
+}
+

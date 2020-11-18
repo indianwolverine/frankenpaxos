@@ -9,6 +9,8 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 import scala.scalajs.js.annotation._
+import frankenpaxos.statemachine.StateMachine
+import com.google.protobuf.ByteString
 
 @JSExportAll
 object ParticipantInboundSerializer
@@ -63,7 +65,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     // A potential initial leader. If participants are initialized with a
     // leader, at most one leader should be set.
     leader: Option[Transport#Address] = None,
-    options: ElectionOptions = ElectionOptions.default
+    options: ElectionOptions = ElectionOptions.default,
+    val stateMachine: StateMachine,
 ) extends Actor(address, transport, logger) {
   // Possible states ///////////////////////////////////////////////////////////
   sealed trait ElectionState
@@ -156,7 +159,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // The log
   var log: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
   // add dummy entry to log
-  log.append(LogEntry(term = 0, command = "dummy"))
+  log.append(LogEntry(term = 0, command = CommandOrNoop().withNoop(Noop())))
 
   // The index of highest log entry known to be committed
   var commitIndex: Int = 0
@@ -350,7 +353,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                     term = term,
                     prevLogIndex = getPrevLogIndex(),
                     prevLogTerm = getPrevLogTerm(),
-                    entries = List(LogEntry(term = term, command = "noop")),
+                    entries = List(LogEntry(term = term, command = CommandOrNoop().withNoop(Noop()))),
                     leaderCommit = commitIndex
                   )
                 )
@@ -383,7 +386,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         clients(src).send(
           ClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
-                                  response = "NOT_LEADER",
+                                  response = ByteString.copyFromUtf8("NOT_LEADER"),
                                   leaderHint = rand.nextInt(nodes.size)
             )
           )
@@ -395,7 +398,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         clients(src).send(
           ClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
-                                  response = "NOT_LEADER",
+                                  response = ByteString.copyFromUtf8("NOT_LEADER"),
                                   leaderHint = leaderIndex
             )
           )
@@ -424,9 +427,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       src: Transport#Address,
       clientQuery: ClientQuery
   ): Unit = {
+    val readQuery = clientQuery.query
     logger.info(
       s"Got ClientQuery from ${src}"
-        + s"| Index: ${clientQuery.index}"
+        + s"| Query: ${readQuery.query}"
     )
 
     state match {
@@ -435,7 +439,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         clients(src).send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
-                                response = "NOT_LEADER",
+                                response = ByteString.copyFromUtf8("NOT_LEADER"),
                                 leaderHint = rand.nextInt(nodes.size)
             )
           )
@@ -447,7 +451,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         clients(src).send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
-                                response = "NOT_LEADER",
+                                response = ByteString.copyFromUtf8("NOT_LEADER"),
                                 leaderHint = leaderIndex
             )
           )
@@ -456,27 +460,29 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Leader(pingTimer) => {
         // leader can handle client requests directly
 
+        val readIndex = commitIndex
+
         // command is committed in log, return immediately
         if (clientQuery.index <= commitIndex) {
           val leaderIndex = participants.indexOf(leader)
           clients(src).send(
             ClientInbound().withClientQueryResponse(
               ClientQueryResponse(success = true,
-                                  response = log(clientQuery.index).command,
+                                  response = log(clientQuery.query).command,
                                   leaderHint = leaderIndex
               )
             )
           )
         } else {
           // otherwise, keep this request around and service it when index commits
-          clientReadReturn get clientQuery.index match {
+          clientReadReturn get clientQuery.query match {
             case Some(res) =>
-              clientReadReturn(clientQuery.index).append(clients(src))
+              clientReadReturn(clientQuery.query).append(clients(src))
             case None => {
               var clientReads: ArrayBuffer[Chan[Client[Transport]]] =
                 new ArrayBuffer[Chan[Client[Transport]]](0)
               clientReads.append(clients(src))
-              clientReadReturn.update(clientQuery.index, clientReads)
+              clientReadReturn.update(clientQuery.query, clientReads)
             }
           }
         }
@@ -527,8 +533,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
         // If leaderCommit > commitIndex, set commitIndex =
         // min(leaderCommit, index of last new entry)
+        val oldCommitIndex = commitIndex
         if (appReq.leaderCommit > commitIndex) {
           commitIndex = appReq.leaderCommit.min(getPrevLogIndex())
+        }
+        for (index <- oldCommitIndex to commitIndex) {
+          // Execute command on state machine
+          stateMachine.run(log(index).command)
         }
 
         // if this is not a hearbeat msg, main appendEntries logic
@@ -617,40 +628,35 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           // If there exists an N such that N > commitIndex, a majority
           // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
           // set commitIndex = N
+          val oldCommitIndex = commitIndex
           commitIndex = updateCommitIndex()
 
-          // send successful responses to clients whose commands have been committed
-          val leaderIndex = participants.indexOf(leader)
-
-          // service pending write requests
-          for ((index, client) <- clientWriteReturn) {
-            if (commitIndex >= index) {
-              clientWriteReturn(index).send(
-                ClientInbound().withClientRequestResponse(
-                  ClientRequestResponse(success = true,
-                                        response = "OK",
-                                        leaderHint = leaderIndex
+          // Process new committed entries one by one
+          for (index <- oldCommitIndex to commitIndex) {
+            // Execute command on state machine
+            val output = stateMachine.run(log(index).command)
+            // send successful responses to clients whose commands have been committed
+            val leaderIndex = participants.indexOf(leader)
+            // service pending write request for that index
+            clientWriteReturn(index).send(
+              ClientInbound().withClientRequestResponse(
+                ClientRequestResponse(success = true,
+                                      response = output,
+                                      leaderHint = leaderIndex
+                )
+              )
+            )
+            clientWriteReturn.remove(index)
+            // service pending read requests for that index
+            for (addr <- clientReadReturn(index)) {
+              addr.send(
+                ClientInbound().withClientQueryResponse(
+                  ClientQueryResponse(success = true,
+                                      response = output,
+                                      leaderHint = leaderIndex
                   )
                 )
               )
-              clientWriteReturn.remove(index)
-            }
-          }
-
-          // service pending read requests
-          for ((index, client) <- clientReadReturn) {
-            if (commitIndex >= index) {
-              for (addr <- clientReadReturn(index)) {
-                addr.send(
-                  ClientInbound().withClientQueryResponse(
-                    ClientQueryResponse(success = true,
-                                        response = log(index).command,
-                                        leaderHint = leaderIndex
-                    )
-                  )
-                )
-              }
-              clientReadReturn.remove(index)
             }
           }
         } else {
