@@ -4,6 +4,7 @@ import frankenpaxos.{Actor, Chan, Logger, ProtoSerializer}
 import scala.concurrent.{Future, Promise}
 import scala.scalajs.js.annotation._
 import scala.util.Random
+import com.google.protobuf.ByteString
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -52,15 +53,15 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
 
   @JSExportAll
   case class PendingWrite(
-      promise: Promise[Boolean],
-      cmd: String,
+      promise: Promise[Array[Byte]],
+      cmd: Array[Byte],
       resendTimer: Transport#Timer
   ) extends PendingState
 
   @JSExportAll
   case class PendingRead(
-      promise: Promise[String],
-      index: Integer,
+      promise: Promise[Array[Byte]],
+      query: Array[Byte],
       resendTimer: Transport#Timer
   ) extends PendingState
 
@@ -86,7 +87,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   // Helpers
 
   private def makePendingWriteResendTimer(
-      cmd: String
+      cmd: Array[Byte]
   ): Transport#Timer = {
     lazy val t: Transport#Timer = timer(
       s"resendPendingWrite",
@@ -102,14 +103,14 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def makePendingReadResendTimer(
-      index: Integer
+      query: Array[Byte]
   ): Transport#Timer = {
     lazy val t: Transport#Timer = timer(
       s"resendPendingWrite",
       java.time.Duration.ofSeconds(10),
       () => {
         leaderIndex = rand.nextInt(raftParticipants.size)
-        readImpl(index)
+        readImpl(query)
         t.start()
       }
     )
@@ -145,7 +146,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
           }
         } else {
           logger.info("Command successfully replicated!")
-          pendingWrite.promise.success(true)
+          pendingWrite.promise.success(requestResponse.response.toByteArray())
           pending = None
         }
       case Some(_: PendingRead) =>
@@ -178,7 +179,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             logger.info(
               s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}."
             )
-            readImpl(pendingRead.index)
+            readImpl(pendingRead.query)
           } else {
             logger.info(
               s"PendingRead failed: ${pendingRead}."
@@ -187,7 +188,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
           }
         } else {
           logger.info("Command successfully replicated!")
-          pendingRead.promise.success(queryResponse.response)
+          pendingRead.promise.success(queryResponse.response.toByteArray())
           pending = None
         }
       case None =>
@@ -197,25 +198,25 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  private def writeImpl(cmd: String): Unit = {
+  private def writeImpl(cmd: Array[Byte]): Unit = {
     raftParticipants(leaderIndex).send(
-      ParticipantInbound().withClientRequest(ClientRequest(cmd = cmd))
+      ParticipantInbound().withClientRequest(ClientRequest(CommandOrNoop().withCommand(Command(cmd = ByteString.copyFrom(cmd)))))
     )
   }
 
-  private def readImpl(index: Int): Unit = {
+  private def readImpl(query: Array[Byte]): Unit = {
     raftParticipants(leaderIndex).send(
-      ParticipantInbound().withClientQuery(ClientQuery(index = index))
+      ParticipantInbound().withClientQuery(ClientQuery(ReadCommand(query = ByteString.copyFrom(query))))
     )
   }
 
   // Interface
 
-  def write(cmd: String): Future[Boolean] = {
+  def write(cmd: Array[Byte]): Future[Array[Byte]] = {
     if (pending != None) {
       throw new Exception("An action is already pending!")
     }
-    val promise = Promise[Boolean]()
+    val promise = Promise[Array[Byte]]()
     pending = Some(
       PendingWrite(
         promise = promise,
@@ -227,19 +228,31 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     promise.future
   }
 
-  def read(index: Int): Future[String] = {
+  def write(cmd: String): Future[String] = {
+    write(cmd.getBytes()).map(new String(_))(
+      concurrent.ExecutionContext.Implicits.global
+    )
+  }
+
+  def read(query: Array[Byte]): Future[Array[Byte]] = {
     if (pending != None) {
       throw new Exception("An action is already pending!")
     }
-    val promise = Promise[String]()
+    val promise = Promise[Array[Byte]]()
     pending = Some(
       PendingRead(
         promise = promise,
-        index = index,
-        resendTimer = makePendingReadResendTimer(index)
+        query = query,
+        resendTimer = makePendingReadResendTimer(query)
       )
     )
-    transport.executionContext().execute(() => readImpl(index))
+    transport.executionContext().execute(() => readImpl(query))
     promise.future
+  }
+
+  def read(query: String): Future[String] = {
+    write(query.getBytes()).map(new String(_))(
+      concurrent.ExecutionContext.Implicits.global
+    )
   }
 }
