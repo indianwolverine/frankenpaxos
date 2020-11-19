@@ -179,13 +179,15 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     mutable.Map[Transport#Address, Int]()
   config.participantAddresses.foreach { a => matchIndex.update(a, 1) }
 
-  // map of clients whose commands are at log index n
+  // Helper data structures ////////
+
+  // map of log indexes - client
   var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] =
     mutable.Map[Int, Chan[Client[Transport]]]()
 
-  // map of clients with read requests for index n
-  var clientReadReturn: mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]] =
-    mutable.Map[Int, ArrayBuffer[Chan[Client[Transport]]]]()
+  // accumulated reads #TODO
+  var clientReads: ArrayBuffer[Tuple2[ReadCommand, Chan[Client[Transport]]]] =
+    ArrayBuffer[Tuple2[ReadCommand, Chan[Client[Transport]]]]()
 
   // random
   val rand = new Random();
@@ -214,7 +216,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Request.VoteRequest(r)  => handleVoteRequest(src, r)
       case Request.VoteResponse(r) => handleVoteResponse(src, r)
       case Request.Empty => {
-        logger.fatal("Empty LeaderInbound encountered.")
+        logger.fatal("Empty ParticipantInbound encountered.")
       }
     }
   }
@@ -462,30 +464,16 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
         val readIndex = commitIndex
 
-        // command is committed in log, return immediately
-        if (clientQuery.index <= commitIndex) {
-          val leaderIndex = participants.indexOf(leader)
-          clients(src).send(
-            ClientInbound().withClientQueryResponse(
-              ClientQueryResponse(success = true,
-                                  response = log(clientQuery.query).command,
-                                  leaderHint = leaderIndex
-              )
-            )
-          )
-        } else {
-          // otherwise, keep this request around and service it when index commits
-          clientReadReturn get clientQuery.query match {
-            case Some(res) =>
-              clientReadReturn(clientQuery.query).append(clients(src))
-            case None => {
-              var clientReads: ArrayBuffer[Chan[Client[Transport]]] =
-                new ArrayBuffer[Chan[Client[Transport]]](0)
-              clientReads.append(clients(src))
-              clientReadReturn.update(clientQuery.query, clientReads)
-            }
+        // store this read and service it once majority of heartbeats are received
+        clientReads.append((readQuery, clients(src)))
+
+        // send heartbeats
+        for (addr <- participants) {
+          if (!addr.equals(address)) {
+            sendHeartBeat(addr)
           }
         }
+        pingTimer.reset()
       }
     }
   }
@@ -539,10 +527,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         }
         for (index <- oldCommitIndex to commitIndex) {
           // Execute command on state machine
-          stateMachine.run(log(index).command)
+          applyCommandOrNoop(log(index).command)
         }
 
-        // if this is not a hearbeat msg, main appendEntries logic
+        // if this is not a heartbeat msg, main appendEntries logic
         if (appReq.entries.length > 0) {
           // check that log contains entry at prevLogIndex with term == prevLogTerm
           if (!checkPrevEntry(appReq.prevLogIndex, appReq.prevLogIndex)) {
@@ -560,17 +548,16 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           // Prune conflicting entries and
           // append any new entries not already in the log
           applyEntries(appReq.prevLogIndex + 1, appReq.entries)
-
-          // send success response
-          nodes(src).send(
-            ParticipantInbound().withAppendEntriesResponse(
-              AppendEntriesResponse(term = term,
-                                    success = true,
-                                    lastLogIndex = getPrevLogIndex()
-              )
+        }
+        // send success response
+        nodes(src).send(
+          ParticipantInbound().withAppendEntriesResponse(
+            AppendEntriesResponse(term = term,
+                                  success = true,
+                                  lastLogIndex = getPrevLogIndex()
             )
           )
-        }
+        )
       }
       case Candidate(notEnoughVotesTimer, votes) => {
         transitionToFollower(appReq.term, src)
@@ -634,31 +621,31 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           // Process new committed entries one by one
           for (index <- oldCommitIndex to commitIndex) {
             // Execute command on state machine
-            val output = stateMachine.run(log(index).command)
+            val output = applyCommandOrNoop(log(index).command)
             // send successful responses to clients whose commands have been committed
             val leaderIndex = participants.indexOf(leader)
             // service pending write request for that index
             clientWriteReturn(index).send(
               ClientInbound().withClientRequestResponse(
                 ClientRequestResponse(success = true,
-                                      response = output,
+                                      response = ByteString.copyFrom(output),
                                       leaderHint = leaderIndex
                 )
               )
             )
             clientWriteReturn.remove(index)
-            // service pending read requests for that index
-            for (addr <- clientReadReturn(index)) {
-              addr.send(
-                ClientInbound().withClientQueryResponse(
-                  ClientQueryResponse(success = true,
-                                      response = output,
-                                      leaderHint = leaderIndex
-                  )
-                )
-              )
-            }
           }
+          // service pending read requests once heartbeat majority is reached #TODO
+          // for (addr <- clientReadReturn(index)) {
+          //   addr.send(
+          //     ClientInbound().withClientQueryResponse(
+          //       ClientQueryResponse(success = true,
+          //                           response = output,
+          //                           leaderHint = leaderIndex
+          //       )
+          //     )
+          //   )
+          // }
         } else {
           // decrement nextIndex for follower (src) and retry AppendEntriesRequest
           nextIndex.update(src, nextIndex(src) - 1)
@@ -699,16 +686,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       () => {
         for (addr <- participants) {
           if (!addr.equals(address)) {
-            nodes(addr).send(
-              ParticipantInbound().withAppendEntriesRequest(
-                AppendEntriesRequest(term = term,
-                                     prevLogIndex = getPrevLogIndex(),
-                                     prevLogTerm = getPrevLogTerm(),
-                                     entries = List(),
-                                     leaderCommit = commitIndex
-                )
-              )
-            )
+            sendHeartBeat(addr)
           }
         }
         t.start()
@@ -860,6 +838,19 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     )
   }
 
+  private def sendHeartBeat(address: Transport#Address): Unit = {
+    nodes(address).send(
+      ParticipantInbound().withAppendEntriesRequest(
+        AppendEntriesRequest(term = term,
+                             prevLogIndex = getPrevLogIndex(),
+                             prevLogTerm = getPrevLogTerm(),
+                             entries = List(),
+                             leaderCommit = commitIndex
+        )
+      )
+    )
+  }
+
   private def updateCommitIndex(): Int = {
     var maxMajorityIndex: Int = commitIndex
 
@@ -876,5 +867,17 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
 
     return maxMajorityIndex
+  }
+
+  private def applyCommandOrNoop(commandOrNoop: CommandOrNoop): Array[Byte] = {
+    import CommandOrNoop.Value
+    commandOrNoop.value match {
+      case Value.Command(command) =>
+        return stateMachine.run(command.cmd.toByteArray)
+      case Value.Noop(_) =>
+        return Array[Byte]()
+      case Value.Empty =>
+        logger.fatal("Empty CommandOrNoop.")
+    }
   }
 }
