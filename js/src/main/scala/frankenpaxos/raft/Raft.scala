@@ -6,7 +6,13 @@ import frankenpaxos.Actor
 import frankenpaxos.JsLogger
 import frankenpaxos.JsTransport
 import frankenpaxos.JsTransportAddress
-
+import frankenpaxos.statemachine.KeyValueStore
+import frankenpaxos.statemachine.{
+  GetRequest,
+  KeyValueStoreInput,
+  SetKeyValuePair,
+  SetRequest
+}
 @JSExportAll
 class Raft {
   // Transport.
@@ -20,7 +26,7 @@ class Raft {
       JsTransportAddress("Participant 2"),
       JsTransportAddress("Participant 3"),
       JsTransportAddress("Participant 4"),
-      JsTransportAddress("Participant 5"),
+      JsTransportAddress("Participant 5")
     ),
     clientAddresses = List(
       JsTransportAddress("Client 1"),
@@ -60,7 +66,8 @@ class Raft {
     JsTransportAddress("Participant 1"),
     transport,
     participant1Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 
   val participant2Logger = new JsLogger()
@@ -68,7 +75,8 @@ class Raft {
     JsTransportAddress("Participant 2"),
     transport,
     participant2Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 
   val participant3Logger = new JsLogger()
@@ -76,7 +84,8 @@ class Raft {
     JsTransportAddress("Participant 3"),
     transport,
     participant3Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 
   val participant4Logger = new JsLogger()
@@ -84,16 +93,32 @@ class Raft {
     JsTransportAddress("Participant 4"),
     transport,
     participant4Logger,
-    config
+    config,
+    new KeyValueStore()
   )
-  
+
   val participant5Logger = new JsLogger()
   val participant5 = new Participant[JsTransport](
     JsTransportAddress("Participant 5"),
     transport,
     participant5Logger,
-    config
+    config,
+    new KeyValueStore()
   )
+
+  def serializeWrite(key: String, value: String): Array[Byte] = {
+  KeyValueStoreInput()
+    .withSetRequest(
+      SetRequest(keyValue = Seq(SetKeyValuePair(key = key, value = value)))
+    )
+    .toByteArray
+  }
+
+  def serializeRead(key: String): Array[Byte] = {
+    KeyValueStoreInput()
+      .withGetRequest(GetRequest(key = Seq(key)))
+      .toByteArray
+  }
 }
 
 @JSExportAll
