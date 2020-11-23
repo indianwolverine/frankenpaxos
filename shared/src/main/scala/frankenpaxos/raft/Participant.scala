@@ -10,6 +10,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 import scala.scalajs.js.annotation._
 import frankenpaxos.statemachine.StateMachine
+import java.util.UUID.randomUUID
 import com.google.protobuf.ByteString
 
 @JSExportAll
@@ -48,7 +49,7 @@ case class ElectionOptions(
 
 object ElectionOptions {
   val default = ElectionOptions(
-    pingPeriod = java.time.Duration.ofSeconds(1),
+    pingPeriod = java.time.Duration.ofSeconds(5),
     noPingTimeoutMin = java.time.Duration.ofSeconds(10),
     noPingTimeoutMax = java.time.Duration.ofSeconds(12),
     notEnoughVotesTimeoutMin = java.time.Duration.ofSeconds(10),
@@ -62,11 +63,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     transport: Transport,
     logger: Logger,
     config: Config[Transport],
+    val stateMachine: StateMachine,
     // A potential initial leader. If participants are initialized with a
     // leader, at most one leader should be set.
     leader: Option[Transport#Address] = None,
     options: ElectionOptions = ElectionOptions.default,
-    val stateMachine: StateMachine,
 ) extends Actor(address, transport, logger) {
   // Possible states ///////////////////////////////////////////////////////////
   sealed trait ElectionState
@@ -166,31 +167,26 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // The index of highest log entry applied to state machine
   var lastApplied: Int = 0
+  
+  // random
+  val rand = new Random();
 
   // Leader State (reinit on election) /////////////////////////////////////////
 
   // index of next log entry to be sent to participant
-  var nextIndex: mutable.Map[Transport#Address, Int] =
-    mutable.Map[Transport#Address, Int]()
-  config.participantAddresses.foreach { a => nextIndex.update(a, 1) }
+  var nextIndex: mutable.Map[Transport#Address, Int] = _
 
   // index of highest log entry known to be replicated on participant
-  var matchIndex: mutable.Map[Transport#Address, Int] =
-    mutable.Map[Transport#Address, Int]()
-  config.participantAddresses.foreach { a => matchIndex.update(a, 1) }
+  var matchIndex: mutable.Map[Transport#Address, Int] = _
 
-  // Helper data structures ////////
+  // Helper data structures for Leader (also should reinit on election) //////
 
   // map of log indexes - client
-  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] =
-    mutable.Map[Int, Chan[Client[Transport]]]()
+  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = _
 
-  // accumulated reads #TODO
-  var clientReads: ArrayBuffer[Tuple2[ReadCommand, Chan[Client[Transport]]]] =
-    ArrayBuffer[Tuple2[ReadCommand, Chan[Client[Transport]]]]()
+  // map tracking read heartbeats: uuid -> count, command, clientsrc
+  var clientReads: mutable.Map[String, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]] = _
 
-  // random
-  val rand = new Random();
 
   // Callback registration /////////////////////////////////////////////////////
   def _register(callback: (Transport#Address) => Unit) = {
@@ -342,28 +338,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         // the leader for this term. `addresses.size / 2 + 1` is just a
         // formula for a majority.
         if (newState.votes.size >= (participants.size / 2 + 1)) {
-          stopTimer(state)
-          val t = pingTimer()
-          t.start()
-          state = Leader(t)
-
-          for (addr <- participants) {
-            if (!addr.equals(address)) {
-              nodes(addr).send(
-                ParticipantInbound().withAppendEntriesRequest(
-                  AppendEntriesRequest(
-                    term = term,
-                    prevLogIndex = getPrevLogIndex(),
-                    prevLogTerm = getPrevLogTerm(),
-                    entries = List(LogEntry(term = term, command = CommandOrNoop().withNoop(Noop()))),
-                    leaderCommit = commitIndex
-                  )
-                )
-              )
-            }
-          }
-
-          callbacks.foreach(_(address))
+          transitionToLeader()
         }
       }
       case Leader(pingTimer) => {
@@ -461,16 +436,16 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Leader(pingTimer) => {
         // leader can handle client requests directly
-
-        val readIndex = commitIndex
+        
+        val uuid = randomUUID().toString
 
         // store this read and service it once majority of heartbeats are received
-        clientReads.append((readQuery, clients(src)))
+        clientReads.update(uuid, new Tuple3(0, readQuery, clients(src)))
 
         // send heartbeats
         for (addr <- participants) {
           if (!addr.equals(address)) {
-            sendHeartBeat(addr)
+            sendHeartBeat(addr, Some(uuid))
           }
         }
         pingTimer.reset()
@@ -489,6 +464,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s"| PrevLogTerm: ${appReq.prevLogTerm}"
         + s"| Leader Commit: ${appReq.leaderCommit}"
         + s"| Entries: ${appReq.entries}"
+        + s"| UUID: ${appReq.uuid}"
     )
 
     // If we hear a ping from an earlier term, return false and term.
@@ -554,7 +530,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           ParticipantInbound().withAppendEntriesResponse(
             AppendEntriesResponse(term = term,
                                   success = true,
-                                  lastLogIndex = getPrevLogIndex()
+                                  lastLogIndex = getPrevLogIndex(),
+                                  uuid = appReq.uuid
             )
           )
         )
@@ -578,6 +555,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s"| Term: ${appRes.term}"
         + s"| Success = ${appRes.success}"
         + s"| LastLogIndex = ${appRes.lastLogIndex}"
+        + s"| UUID = ${appRes.uuid}"
     )
 
     // If we hear from a leader in a larger term, then we immediately become a
@@ -617,14 +595,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           // set commitIndex = N
           val oldCommitIndex = commitIndex
           commitIndex = updateCommitIndex()
-
+          logger.info("Shit1")
+          val leaderIndex = participants.indexOf(leader)
           // Process new committed entries one by one
-          for (index <- oldCommitIndex to commitIndex) {
+          for (index <- oldCommitIndex until commitIndex) {
             // Execute command on state machine
             val output = applyCommandOrNoop(log(index).command)
-            // send successful responses to clients whose commands have been committed
-            val leaderIndex = participants.indexOf(leader)
-            // service pending write request for that index
+            // send successful responses to clients whose command for that index have been committed
             clientWriteReturn(index).send(
               ClientInbound().withClientRequestResponse(
                 ClientRequestResponse(success = true,
@@ -635,17 +612,35 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             )
             clientWriteReturn.remove(index)
           }
-          // service pending read requests once heartbeat majority is reached #TODO
-          // for (addr <- clientReadReturn(index)) {
-          //   addr.send(
-          //     ClientInbound().withClientQueryResponse(
-          //       ClientQueryResponse(success = true,
-          //                           response = output,
-          //                           leaderHint = leaderIndex
-          //       )
-          //     )
-          //   )
-          // }
+          // If read heartbeat response handle waiting client if necessary
+          appRes.uuid match {
+            case Some(uuid) => {
+              clientReads.get(uuid) match {
+                case Some(tuple) => {
+                  val count = tuple._1 + 1
+                  clientReads.update(uuid, new Tuple3(count, tuple._2, tuple._3))
+                  // service pending read requests once heartbeat majority is reached #TODO
+                  if (count > ((participants.size / 2) + 1)) {
+                    val output = stateMachine.run(tuple._2.query.toByteArray)
+                    tuple._3.send(
+                      ClientInbound().withClientQueryResponse(
+                        ClientQueryResponse(success = true,
+                                            response = ByteString.copyFrom(output),
+                                            leaderHint = leaderIndex
+                        )
+                      )
+                    )
+                    clientReads -= uuid
+                  }
+                }
+                case None => {
+                  logger.fatal("No read was found for this UUID!")
+                }
+              }
+              
+            }
+            case None =>
+          }
         } else {
           // decrement nextIndex for follower (src) and retry AppendEntriesRequest
           nextIndex.update(src, nextIndex(src) - 1)
@@ -663,18 +658,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Candidate(notEnoughVotesTimer, _) => { notEnoughVotesTimer.stop() }
       case Leader(pingTimer)                 => { pingTimer.stop() }
     }
-  }
-
-  private def transitionToFollower(
-      newterm: Int,
-      leader: Transport#Address
-  ): Unit = {
-    stopTimer(state)
-    term = newterm
-    val t = noPingTimer()
-    t.start()
-    state = Follower(t, leader)
-    callbacks.foreach(_(leader))
   }
 
   // Timers ////////////////////////////////////////////////////////////////////
@@ -750,6 +733,49 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   // Helpers /////////////////////////////////////////////////////////////////
+  private def transitionToLeader(): Unit = {
+    stopTimer(state)
+    val t = pingTimer()
+    t.start()
+    state = Leader(t)
+    nextIndex = mutable.Map[Transport#Address, Int]()
+    config.participantAddresses.foreach { a => nextIndex.update(a, 1) }
+    matchIndex = mutable.Map[Transport#Address, Int]()
+    config.participantAddresses.foreach { a => matchIndex.update(a, 0) }
+    clientWriteReturn = mutable.Map[Int, Chan[Client[Transport]]]()
+    clientReads = mutable.Map[String, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
+
+    for (addr <- participants) {
+      if (!addr.equals(address)) {
+        nodes(addr).send(
+          ParticipantInbound().withAppendEntriesRequest(
+            AppendEntriesRequest(
+              term = term,
+              prevLogIndex = getPrevLogIndex(),
+              prevLogTerm = getPrevLogTerm(),
+              entries = List(LogEntry(term = term, command = CommandOrNoop().withNoop(Noop()))),
+              leaderCommit = commitIndex
+            )
+          )
+        )
+      }
+    }
+
+    callbacks.foreach(_(address))
+  }
+
+  private def transitionToFollower(
+      newterm: Int,
+      leader: Transport#Address
+  ): Unit = {
+    stopTimer(state)
+    term = newterm
+    val t = noPingTimer()
+    t.start()
+    state = Follower(t, leader)
+    callbacks.foreach(_(leader))
+  }
+
   private def transitionToCandidate(): Unit = {
     stopTimer(state)
     term += 1
@@ -838,14 +864,15 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     )
   }
 
-  private def sendHeartBeat(address: Transport#Address): Unit = {
+  private def sendHeartBeat(address: Transport#Address, uuid: Option[String] = None): Unit = {
     nodes(address).send(
       ParticipantInbound().withAppendEntriesRequest(
         AppendEntriesRequest(term = term,
                              prevLogIndex = getPrevLogIndex(),
                              prevLogTerm = getPrevLogTerm(),
                              entries = List(),
-                             leaderCommit = commitIndex
+                             leaderCommit = commitIndex,
+                             uuid = uuid
         )
       )
     )
