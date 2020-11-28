@@ -6,7 +6,6 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 import scala.scalajs.js.annotation._
-import java.util.UUID.randomUUID
 import com.google.protobuf.ByteString
 
 @JSExportAll
@@ -45,7 +44,7 @@ case class ElectionOptions(
 
 object ElectionOptions {
   val default = ElectionOptions(
-    pingPeriod = java.time.Duration.ofSeconds(3),
+    pingPeriod = java.time.Duration.ofSeconds(5),
     noPingTimeoutMin = java.time.Duration.ofSeconds(10),
     noPingTimeoutMax = java.time.Duration.ofSeconds(12),
     notEnoughVotesTimeoutMin = java.time.Duration.ofSeconds(10),
@@ -175,13 +174,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // map of log indexes - client
   var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = _
 
-  // map tracking peer responses
-  var lastSent: mutable.Map[Transport#Address, Long] = _
-
   // map tracking read heartbeats: uuid -> count, command, clientsrc
   var clientReads
-      : mutable.Map[String, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]] =
+      : mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]] =
     _
+  
+  // To identify heartbeat messages
+  var uuid: Int = _
 
   // Receive ///////////////////////////////////////////////////////////////////
   override def receive(
@@ -422,17 +421,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         )
       }
       case Leader(pingTimer) => {
-        // leader can handle client requests directly
+        // Bump uuid to indentify this heartbeat
+        uuid += 1
+        clientReads(uuid) = Tuple3(0, readQuery, clients(src))
 
-        val uuid = randomUUID().toString
-
-        // store this read and service it once majority of heartbeats are received
-        clientReads.update(uuid, new Tuple3(0, readQuery, clients(src)))
-
-        // send heartbeats to all other participants if possible
+        // send heartbeats to all other participants
         for (addr <- participants) {
           if (!addr.equals(address)) {
-            sendAppEntReq(addr)
+            sendAppEntReq(addr, Some(uuid))
           }
         }
       }
@@ -446,10 +442,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     logger.info(
       s"Got AppendEntriesRequest from ${src}"
       + s" | Term: ${appReq.term}"
-      + s" | PrevLogIndex = ${appReq.prevLogIndex}"
+      + s" | PrevLogIndex: ${appReq.prevLogIndex}"
       + s" | PrevLogTerm: ${appReq.prevLogTerm}"
       + s" | Leader Commit: ${appReq.leaderCommit}"
       + s" | Entries: ${appReq.entries}"
+      + s" | UUID: ${appReq.uuid}"
     )
     var success = false
     if (appReq.term > term) {
@@ -507,12 +504,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     // send response
     val response = AppendEntriesResponse(term = term,
                                          success = success,
-                                         lastLogIndex = getPrevLogIndex())
+                                         lastLogIndex = getPrevLogIndex(),
+                                         uuid = appReq.uuid)
     logger.info(
       s"Sending AppendEntriesResponse to ${src}"
       + s" | Term: ${response.term}"
       + s" | Success = ${response.success}"
       + s" | LastLogIndex = ${response.lastLogIndex}"
+      + s" | UUID: ${response.uuid}"
     )
     nodes(src).send(ParticipantInbound().withAppendEntriesResponse(response))
   }
@@ -524,11 +523,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     logger.info(
       s"Got AppendEntriesResponse from ${src}"
       + s" | Term: ${appRes.term}"
-      + s" | Success = ${appRes.success}"
-      + s" | LastLogIndex = ${appRes.lastLogIndex}"
+      + s" | Success: ${appRes.success}"
+      + s" | LastLogIndex: ${appRes.lastLogIndex}"
+      + s" | UUID: ${appRes.uuid}"
     )
-    // We heard back from them, so it's okay to send something again
-    lastSent(src) = Long.MinValue
     // If we hear from a leader in a larger term, then we immediately become a follower.
     if (appRes.term > term) {
       transitionToFollower(appRes.term, src)
@@ -573,7 +571,30 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                 clientWriteReturn.remove(index)
               }
             }
-            // TODO: Handle read majority and send out appendEntries if possible
+            // Handle read majority if reached
+            appRes.uuid match {
+              case Some(uuid) => {
+                if (clientReads.contains(uuid)) {
+                  val tuple = clientReads(uuid)
+                  val count = tuple._1 + 1
+                  clientReads(uuid) = Tuple3(count, tuple._2, tuple._3)
+                  if (count >= (participants.size / 2) + 1) {
+                    logger.info(s"Heartbeat majority reached for ${uuid}")
+                    val output = stateMachine.run(tuple._2.toByteArray)
+                    tuple._3.send(
+                      ClientInbound().withClientQueryResponse(
+                        ClientQueryResponse(success = true,
+                                            response = ByteString.copyFrom(output),
+                                            leaderHint = participants.indexOf(leader)
+                        )
+                      )
+                    )
+                    clientReads -= uuid
+                  }
+                }
+              }
+              case None =>
+            }
           } else {
             // decrement nextIndex for follower (src) and retry AppendEntriesRequest
             nextIndex.update(src, (1).max(nextIndex(src) - 1))
@@ -666,12 +687,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
     matchIndex = mutable.Map[Transport#Address, Int]()
     config.participantAddresses.foreach { a => matchIndex.update(a, 0) }
-    lastSent = mutable.Map[Transport#Address, Long]()
-    config.participantAddresses.foreach { a => lastSent.update(a, Long.MinValue) }
     clientWriteReturn = mutable.Map[Int, Chan[Client[Transport]]]()
     clientReads =
-      mutable.Map[String, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
-    
+      mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
+    uuid = 0
+
     log.append(LogEntry(term = term, command = CommandOrNoop().withNoop(Noop())))
     for (addr <- participants) {
       if (!addr.equals(address)) {
@@ -735,20 +755,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     log(log.length - 1).term
   }
 
-  private def sendAppEntReq(address: Transport#Address): Unit = {
-    val current_time = System.currentTimeMillis()
-    if (lastSent(address) > current_time - options.pingPeriod.getSeconds() ) {
-      logger.info(s"Not sending AppendEntriesRequest to ${address}, last one we sent has yet to timeout.")
-      return
-    }
-    
+  private def sendAppEntReq(address: Transport#Address, uuid: Option[Int] = None): Unit = {
     val prevLogIndex = nextIndex(address) - 1
-    lastSent.update(address, current_time)
     val request = AppendEntriesRequest(term = term,
-                                   prevLogIndex = prevLogIndex,
-                                   prevLogTerm = log(prevLogIndex).term,
-                                   entries = log.slice(prevLogIndex + 1, log.length),
-                                   leaderCommit = commitIndex.min(log.length))
+                                       prevLogIndex = prevLogIndex,
+                                       prevLogTerm = log(prevLogIndex).term,
+                                       entries = log.slice(prevLogIndex + 1, log.length),
+                                       leaderCommit = commitIndex.min(log.length),
+                                       uuid = uuid)
     logger.info(
       s"Sending AppendEntriesRequest to ${address}"
       + s" | Term: ${request.term}"
@@ -756,6 +770,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       + s" | PrevLogTerm = ${request.prevLogTerm}"
       + s" | Entries = ${request.entries}"
       + s" | Leader Commit = ${request.leaderCommit}"
+      + s" | Leader Commit = ${request.uuid}"
     )
     nodes(address).send(ParticipantInbound().withAppendEntriesRequest(request))
   }
