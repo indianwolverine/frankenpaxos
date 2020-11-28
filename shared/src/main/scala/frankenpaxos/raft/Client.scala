@@ -228,12 +228,6 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     promise.future
   }
 
-  def write(cmd: String): Future[String] = {
-    write(cmd.getBytes()).map(new String(_))(
-      concurrent.ExecutionContext.Implicits.global
-    )
-  }
-
   def read(query: Array[Byte]): Future[Array[Byte]] = {
     if (pending != None) {
       throw new Exception("An action is already pending!")
@@ -250,9 +244,4 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     promise.future
   }
 
-  def read(query: String): Future[String] = {
-    write(query.getBytes()).map(new String(_))(
-      concurrent.ExecutionContext.Implicits.global
-    )
-  }
 }
