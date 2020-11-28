@@ -534,12 +534,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       transitionToFollower(appRes.term, src)
     } else if (appRes.term == term) {
       state match {
-        case Leader(pingTimer) => {
+        case Leader(_) => {
           if (appRes.success) {
             // Update nextIndex and matchIndex for follower (src)
-            nextIndex.update(src, appRes.lastLogIndex + 1)
-            matchIndex.update(src, appRes.lastLogIndex)
-  
+            matchIndex.update(src, matchIndex(src).max(appRes.lastLogIndex))
+            nextIndex.update(src, matchIndex(src) + 1)
             // Commit entries
             // If there exists an N such that N > commitIndex, a majority
             // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
@@ -744,7 +743,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     }
     
     val prevLogIndex = nextIndex(address) - 1
-    lastSent(address) = current_time
+    lastSent.update(address, current_time)
     val request = AppendEntriesRequest(term = term,
                                    prevLogIndex = prevLogIndex,
                                    prevLogTerm = log(prevLogIndex).term,
