@@ -61,6 +61,7 @@ let participant_info = {
         <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
         <div><strong>Client Write Return</strong>: {{node.actor.clientWriteReturn}}</div>
         <div><strong>Client Read Return</strong>: {{node.actor.clientReads}}</div>
+        <div><strong>Last Sent</strong>: {{node.actor.lastSent}}</div>
       </div>
     </div>
   `,
