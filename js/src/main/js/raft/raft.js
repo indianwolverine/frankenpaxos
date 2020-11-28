@@ -49,17 +49,19 @@ let participant_info = {
   props: ['node'],
   template: `
     <div>
-      <div><strong>State</strong>: {{node.actor.state}}</div>
-      <div><strong>Log</strong>: {{node.actor.log}}</div>
-      <div><strong>Next Index</strong>: {{node.actor.nextIndex}}</div>
-      <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
-      <div><strong>Client Write Return</strong>: {{node.actor.clientWriteReturn}}</div>
-      <div><strong>Client Read Return</strong>: {{node.actor.clientReads}}</div>
-      <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
-      <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
       <div><strong>Participants</strong>: {{node.actor.participants}}</div>
       <div><strong>Clients</strong>: {{node.actor.clients}}</div>
-      <div><strong>State Machine</strong>: {{node.actor.stateMachine}}</div>
+      <div><strong>State</strong>: {{node.actor.state}}</div>
+      <div><strong>Log</strong>: {{node.actor.log}}</div>
+      <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
+      <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
+      <div><strong>State Machine (KV Store)</strong>: {{node.actor.stateMachine}}</div>
+      <div style="font-style: italic">
+        <div><strong>Next Index</strong>: {{node.actor.nextIndex}}</div>
+        <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
+        <div><strong>Client Write Return</strong>: {{node.actor.clientWriteReturn}}</div>
+        <div><strong>Client Read Return</strong>: {{node.actor.clientReads}}</div>
+      </div>
     </div>
   `,
 };
@@ -296,8 +298,6 @@ function main() {
       }
     }
   })
-  console.log(Raft.serializeRead)
-  console.log(Raft.serializeWrite)
 
   // Select a node by clicking it.
   for (let node of Object.values(nodes)) {
