@@ -187,7 +187,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             pendingRead.promise.failure(new Exception("Read failed"))
           }
         } else {
-          logger.info("Command successfully replicated!")
+          logger.info("Read Command successfully replicated!")
           pendingRead.promise.success(queryResponse.response.toByteArray())
           pending = None
         }

@@ -496,10 +496,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             }
           }
         }
-        case default => { logger.fatal(s"${default} recieved an AppendEntriesRequest.") }
+        case default => { logger.info(s"${default} recieved an AppendEntriesRequest.") }
       }
     } else {
-      logger.fatal(s"Recieved an AppendEntriesRequest with term ${appReq.term} < ${term}")
+      logger.info(s"Recieved an AppendEntriesRequest with term ${appReq.term} < ${term}")
     }
     // send response
     val response = AppendEntriesResponse(term = term,
@@ -601,7 +601,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             sendAppEntReq(src)
           }
         }
-        case default => { logger.fatal(s"${default} recieved an AppendEntriesResponse.") }
+        case default => { logger.info(s"${default} recieved an AppendEntriesResponse.") }
       }
     } else {
       logger.fatal(s"Recieved an AppendEntriesResponse with term ${appRes.term} < ${term}")
@@ -770,7 +770,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       + s" | PrevLogTerm = ${request.prevLogTerm}"
       + s" | Entries = ${request.entries}"
       + s" | Leader Commit = ${request.leaderCommit}"
-      + s" | Leader Commit = ${request.uuid}"
+      + s" | UUID = ${request.uuid}"
     )
     nodes(address).send(ParticipantInbound().withAppendEntriesRequest(request))
   }
