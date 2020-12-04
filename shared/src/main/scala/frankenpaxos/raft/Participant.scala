@@ -35,11 +35,11 @@ object Participant {
 // between `noVoteTimeoutMin` and `noVoteTimeoutMax` seconds to become a
 // candidate at a higher term.
 case class ElectionOptions(
-  pingPeriod: java.time.Duration,
-  noPingTimeoutMin: java.time.Duration,
-  noPingTimeoutMax: java.time.Duration,
-  notEnoughVotesTimeoutMin: java.time.Duration,
-  notEnoughVotesTimeoutMax: java.time.Duration
+    pingPeriod: java.time.Duration,
+    noPingTimeoutMin: java.time.Duration,
+    noPingTimeoutMax: java.time.Duration,
+    notEnoughVotesTimeoutMin: java.time.Duration,
+    notEnoughVotesTimeoutMax: java.time.Duration
 )
 
 object ElectionOptions {
@@ -178,7 +178,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   var clientReads
       : mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]] =
     _
-  
+
   // To identify heartbeat messages
   var uuid: Int = _
 
@@ -208,9 +208,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     logger.info(
       s"Got VoteRequest from ${src}"
-      + s" | Term: ${voteRequest.term}"
-      + s" | LastLogIndex = ${voteRequest.lastLogIndex}"
-      + s" | LastLogTerm: ${voteRequest.lastLogTerm}"
+        + s" | Term: ${voteRequest.term}"
+        + s" | LastLogIndex = ${voteRequest.lastLogIndex}"
+        + s" | LastLogTerm: ${voteRequest.lastLogTerm}"
     )
 
     // If we hear a vote request from an earlier term, reply with current term and don't grant vote.
@@ -272,8 +272,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     logger.info(
       s"Got VoteResponse from ${src}"
-      + s" | Term: ${vote.term}"
-      + s" | VoteGranted = ${vote.voteGranted}"
+        + s" | Term: ${vote.term}"
+        + s" | VoteGranted = ${vote.voteGranted}"
     )
 
     // If we hear a vote from an earlier term, we ignore it.
@@ -339,7 +339,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     logger.info(
       s"Got ClientRequest from ${src}"
-      + s" | Command: ${clientRequest.cmd}"
+        + s" | Command: ${clientRequest.cmd}"
     )
 
     state match {
@@ -391,7 +391,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     val readQuery = clientQuery.query
     logger.info(
       s"Got ClientQuery from ${src}"
-      + s" | Query: ${readQuery.query}"
+        + s" | Query: ${readQuery.query}"
     )
 
     state match {
@@ -441,12 +441,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     logger.info(
       s"Got AppendEntriesRequest from ${src}"
-      + s" | Term: ${appReq.term}"
-      + s" | PrevLogIndex: ${appReq.prevLogIndex}"
-      + s" | PrevLogTerm: ${appReq.prevLogTerm}"
-      + s" | Leader Commit: ${appReq.leaderCommit}"
-      + s" | Entries: ${appReq.entries}"
-      + s" | UUID: ${appReq.uuid}"
+        + s" | Term: ${appReq.term}"
+        + s" | PrevLogIndex: ${appReq.prevLogIndex}"
+        + s" | PrevLogTerm: ${appReq.prevLogTerm}"
+        + s" | Leader Commit: ${appReq.leaderCommit}"
+        + s" | Entries: ${appReq.entries}"
+        + s" | UUID: ${appReq.uuid}"
     )
     var success = false
     if (appReq.term > term) {
@@ -464,9 +464,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         case Follower(noPingTimer, leader) => {
           noPingTimer.reset()
           // check that log contains entry at prevLogIndex with term == prevLogTerm
-          if (appReq.prevLogIndex == 0 ||
-              (appReq.prevLogIndex <= log.length &&
-               log(appReq.prevLogIndex).term == appReq.prevLogTerm)) {
+          if (
+            appReq.prevLogIndex == 0 ||
+            (appReq.prevLogIndex <= log.length &&
+            log(appReq.prevLogIndex).term == appReq.prevLogTerm)
+          ) {
             success = true
             // prune conflicting entries
             val start = appReq.prevLogIndex + 1
@@ -496,22 +498,27 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             }
           }
         }
-        case default => { logger.info(s"${default} recieved an AppendEntriesRequest.") }
+        case default => {
+          logger.info(s"${default} recieved an AppendEntriesRequest.")
+        }
       }
     } else {
-      logger.info(s"Recieved an AppendEntriesRequest with term ${appReq.term} < ${term}")
+      logger.error(
+        s"Recieved an AppendEntriesRequest with term ${appReq.term} < ${term}"
+      )
     }
     // send response
     val response = AppendEntriesResponse(term = term,
                                          success = success,
                                          lastLogIndex = getPrevLogIndex(),
-                                         uuid = appReq.uuid)
+                                         uuid = appReq.uuid
+    )
     logger.info(
       s"Sending AppendEntriesResponse to ${src}"
-      + s" | Term: ${response.term}"
-      + s" | Success = ${response.success}"
-      + s" | LastLogIndex = ${response.lastLogIndex}"
-      + s" | UUID: ${response.uuid}"
+        + s" | Term: ${response.term}"
+        + s" | Success = ${response.success}"
+        + s" | LastLogIndex = ${response.lastLogIndex}"
+        + s" | UUID: ${response.uuid}"
     )
     nodes(src).send(ParticipantInbound().withAppendEntriesResponse(response))
   }
@@ -522,10 +529,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     logger.info(
       s"Got AppendEntriesResponse from ${src}"
-      + s" | Term: ${appRes.term}"
-      + s" | Success: ${appRes.success}"
-      + s" | LastLogIndex: ${appRes.lastLogIndex}"
-      + s" | UUID: ${appRes.uuid}"
+        + s" | Term: ${appRes.term}"
+        + s" | Success: ${appRes.success}"
+        + s" | LastLogIndex: ${appRes.lastLogIndex}"
+        + s" | UUID: ${appRes.uuid}"
     )
     // If we hear from a leader in a larger term, then we immediately become a follower.
     if (appRes.term > term) {
@@ -549,7 +556,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                   count += 1
                 }
               }
-              if (count >= ((participants.size / 2) + 1) && log(index1).term == term) {
+              if (
+                count >= ((participants.size / 2) + 1) && log(
+                  index1
+                ).term == term
+              ) {
                 commitIndex = commitIndex.max(index1)
               }
             }
@@ -563,8 +574,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                 clientWriteReturn(index).send(
                   ClientInbound().withClientRequestResponse(
                     ClientRequestResponse(success = true,
-                                          response = ByteString.copyFrom(output),
-                                          leaderHint = participants.indexOf(leader)
+                                          response =
+                                            ByteString.copyFrom(output),
+                                          leaderHint =
+                                            participants.indexOf(leader)
                     )
                   )
                 )
@@ -584,8 +597,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                     tuple._3.send(
                       ClientInbound().withClientQueryResponse(
                         ClientQueryResponse(success = true,
-                                            response = ByteString.copyFrom(output),
-                                            leaderHint = participants.indexOf(leader)
+                                            response =
+                                              ByteString.copyFrom(output),
+                                            leaderHint =
+                                              participants.indexOf(leader)
                         )
                       )
                     )
@@ -597,17 +612,21 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             }
           } else {
             // decrement nextIndex for follower (src) and retry AppendEntriesRequest
-            nextIndex.update(src, (1).max(nextIndex(src) - 1))
+            nextIndex.update(src, 1.max(nextIndex(src) - 1))
             sendAppEntReq(src)
           }
         }
-        case default => { logger.info(s"${default} recieved an AppendEntriesResponse.") }
+        case default => {
+          logger.info(s"${default} recieved an AppendEntriesResponse.")
+        }
       }
     } else {
-      logger.fatal(s"Recieved an AppendEntriesResponse with term ${appRes.term} < ${term}")
+      logger.error(
+        s"Recieved an AppendEntriesResponse with term ${appRes.term} < ${term}"
+      )
     }
   }
-  
+
   // Timers ////////////////////////////////////////////////////////////////////
 
   private def stopTimer(state: ElectionState): Unit = {
@@ -692,7 +711,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
     uuid = 0
 
-    log.append(LogEntry(term = term, command = CommandOrNoop().withNoop(Noop())))
+    log.append(
+      LogEntry(term = term, command = CommandOrNoop().withNoop(Noop()))
+    )
     for (addr <- participants) {
       if (!addr.equals(address)) {
         sendAppEntReq(addr)
@@ -755,22 +776,27 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     log(log.length - 1).term
   }
 
-  private def sendAppEntReq(address: Transport#Address, uuid: Option[Int] = None): Unit = {
+  private def sendAppEntReq(
+      address: Transport#Address,
+      uuid: Option[Int] = None
+  ): Unit = {
     val prevLogIndex = nextIndex(address) - 1
-    val request = AppendEntriesRequest(term = term,
-                                       prevLogIndex = prevLogIndex,
-                                       prevLogTerm = log(prevLogIndex).term,
-                                       entries = log.slice(prevLogIndex + 1, log.length),
-                                       leaderCommit = commitIndex.min(log.length),
-                                       uuid = uuid)
+    val request = AppendEntriesRequest(
+      term = term,
+      prevLogIndex = prevLogIndex,
+      prevLogTerm = log(prevLogIndex).term,
+      entries = log.slice(prevLogIndex + 1, log.length),
+      leaderCommit = commitIndex.min(log.length),
+      uuid = uuid
+    )
     logger.info(
       s"Sending AppendEntriesRequest to ${address}"
-      + s" | Term: ${request.term}"
-      + s" | PrevLogIndex = ${request.prevLogIndex}"
-      + s" | PrevLogTerm = ${request.prevLogTerm}"
-      + s" | Entries = ${request.entries}"
-      + s" | Leader Commit = ${request.leaderCommit}"
-      + s" | UUID = ${request.uuid}"
+        + s" | Term: ${request.term}"
+        + s" | PrevLogIndex = ${request.prevLogIndex}"
+        + s" | PrevLogTerm = ${request.prevLogTerm}"
+        + s" | Entries = ${request.entries}"
+        + s" | Leader Commit = ${request.leaderCommit}"
+        + s" | UUID = ${request.uuid}"
     )
     nodes(address).send(ParticipantInbound().withAppendEntriesRequest(request))
   }

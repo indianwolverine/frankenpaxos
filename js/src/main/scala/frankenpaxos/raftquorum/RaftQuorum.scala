@@ -6,6 +6,8 @@ import frankenpaxos.Actor
 import frankenpaxos.JsLogger
 import frankenpaxos.JsTransport
 import frankenpaxos.JsTransportAddress
+import frankenpaxos.quorums.SimpleMajority
+import frankenpaxos.statemachine.KeyValueStore
 
 @JSExportAll
 class RaftQuorum {
@@ -29,13 +31,16 @@ class RaftQuorum {
     )
   )
 
+  val quorumSystem = new SimpleMajority((0 until config.participantAddresses.size).toSet)
+
   // Clients.
   val client1Logger = new JsLogger()
   val client1 = new QuorumClient[JsTransport](
     JsTransportAddress("Client 1"),
     transport,
     client1Logger,
-    config
+    config,
+    quorumSystem
   )
 
   val client2Logger = new JsLogger()
@@ -43,7 +48,8 @@ class RaftQuorum {
     JsTransportAddress("Client 2"),
     transport,
     client2Logger,
-    config
+    config,
+    quorumSystem
   )
 
   val client3Logger = new JsLogger()
@@ -51,7 +57,8 @@ class RaftQuorum {
     JsTransportAddress("Client 3"),
     transport,
     client3Logger,
-    config
+    config,
+    quorumSystem
   )
 
   // Participants.
@@ -60,7 +67,8 @@ class RaftQuorum {
     JsTransportAddress("Participant 1"),
     transport,
     participant1Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 
   val participant2Logger = new JsLogger()
@@ -68,7 +76,8 @@ class RaftQuorum {
     JsTransportAddress("Participant 2"),
     transport,
     participant2Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 
   val participant3Logger = new JsLogger()
@@ -76,7 +85,8 @@ class RaftQuorum {
     JsTransportAddress("Participant 3"),
     transport,
     participant3Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 
   val participant4Logger = new JsLogger()
@@ -84,7 +94,8 @@ class RaftQuorum {
     JsTransportAddress("Participant 4"),
     transport,
     participant4Logger,
-    config
+    config,
+    new KeyValueStore()
   )
   
   val participant5Logger = new JsLogger()
@@ -92,7 +103,8 @@ class RaftQuorum {
     JsTransportAddress("Participant 5"),
     transport,
     participant5Logger,
-    config
+    config,
+    new KeyValueStore()
   )
 }
 
