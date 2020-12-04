@@ -16,14 +16,14 @@ option (scalapb.options) = {
 
 // Reads specific to LRQR
 message ClientQuorumQuery {
-  required int32 index = 1;
+  required frankenpaxos.raft.ReadCommand query = 1;
 }
 
 message ClientQuorumQueryResponse {
   required bool success = 1;
-  required int32 latest_accepted = 2;
-  required int32 latest_committed = 3;
-  required string response = 4;
+  required bytes response = 2;
+  required int32 latest_index = 3;
+  required int32 latest_committed = 4;
 }
 
 // Expected messages to recieve

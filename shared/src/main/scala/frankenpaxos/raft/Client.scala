@@ -106,7 +106,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       query: Array[Byte]
   ): Transport#Timer = {
     lazy val t: Transport#Timer = timer(
-      s"resendPendingWrite",
+      s"resendPendingRead",
       java.time.Duration.ofSeconds(10),
       () => {
         leaderIndex = rand.nextInt(raftParticipants.size)
@@ -124,22 +124,22 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   ) {
     logger.info(
       s"Got ClientRequestResponse from ${src}"
-        + s"| Success: ${requestResponse.success}"
-        + s"| Response: ${requestResponse.response}"
-        + s"| Leader Hint: ${requestResponse.leaderHint}"
+        + s" | Success: ${requestResponse.success}"
+        + s" | Response: ${requestResponse.response}"
+        + s" | Leader Hint: ${requestResponse.leaderHint}"
     )
     pending match {
       case Some(pendingWrite: PendingWrite) =>
         pendingWrite.resendTimer.stop()
         if (!requestResponse.success) {
-          if (requestResponse.response == "NOT_LEADER") {
+          if (new String(requestResponse.response.toByteArray()) == "NOT_LEADER") {
             leaderIndex = requestResponse.leaderHint
             logger.info(
               s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}."
             )
             writeImpl(pendingWrite.cmd)
           } else {
-            logger.info(
+            logger.error(
               s"PendingWrite failed: ${pendingWrite}."
             )
             pendingWrite.promise.failure(new Exception("Write failed"))
@@ -164,9 +164,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   ) {
     logger.info(
       s"Got ClientQueryResponse from ${src}"
-        + s"| Success: ${queryResponse.success}"
-        + s"| Response: ${queryResponse.response}"
-        + s"| Leader Hint: ${queryResponse.leaderHint}"
+        + s" | Success: ${queryResponse.success}"
+        + s" | Response: ${queryResponse.response}"
+        + s" | Leader Hint: ${queryResponse.leaderHint}"
     )
     pending match {
       case Some(pendingWrite: PendingWrite) =>
@@ -174,14 +174,14 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       case Some(pendingRead: PendingRead) =>
         pendingRead.resendTimer.stop()
         if (!queryResponse.success) {
-          if (queryResponse.response == "NOT_LEADER") {
+          if (new String(queryResponse.response.toByteArray()) == "NOT_LEADER") {
             leaderIndex = queryResponse.leaderHint
             logger.info(
               s"$src is not leader, trying again with ${raftParticipants(leaderIndex).dst}."
             )
             readImpl(pendingRead.query)
           } else {
-            logger.info(
+            logger.error(
               s"PendingRead failed: ${pendingRead}."
             )
             pendingRead.promise.failure(new Exception("Read failed"))
@@ -200,13 +200,19 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
 
   private def writeImpl(cmd: Array[Byte]): Unit = {
     raftParticipants(leaderIndex).send(
-      ParticipantInbound().withClientRequest(ClientRequest(CommandOrNoop().withCommand(Command(cmd = ByteString.copyFrom(cmd)))))
+      ParticipantInbound().withClientRequest(
+        ClientRequest(
+          CommandOrNoop().withCommand(Command(cmd = ByteString.copyFrom(cmd)))
+        )
+      )
     )
   }
 
   private def readImpl(query: Array[Byte]): Unit = {
     raftParticipants(leaderIndex).send(
-      ParticipantInbound().withClientQuery(ClientQuery(ReadCommand(query = ByteString.copyFrom(query))))
+      ParticipantInbound().withClientQuery(
+        ClientQuery(ReadCommand(query = ByteString.copyFrom(query)))
+      )
     )
   }
 
@@ -243,5 +249,4 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     transport.executionContext().execute(() => readImpl(query))
     promise.future
   }
-
 }
