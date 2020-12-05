@@ -557,7 +557,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                 }
               }
               if (
-                count >= ((participants.size / 2) + 1) && log(
+                // No + 1 here because the leader has the longest log
+                count >= ((participants.size / 2)) && log(
                   index1
                 ).term == term
               ) {
@@ -591,7 +592,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                   val tuple = clientReads(uuid)
                   val count = tuple._1 + 1
                   clientReads(uuid) = Tuple3(count, tuple._2, tuple._3)
-                  if (count >= (participants.size / 2) + 1) {
+                  // No + 1 here because the leader is part of the majority
+                  if (count >= (participants.size / 2)) {
                     logger.info(s"Heartbeat majority reached for ${uuid}")
                     val output = stateMachine.run(tuple._2.toByteArray)
                     tuple._3.send(

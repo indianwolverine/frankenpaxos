@@ -503,7 +503,8 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
                 }
               }
               if (
-                count >= ((participants.size / 2) + 1) && log(
+                // No + 1 here because the leader has the longest log
+                count >= ((participants.size / 2)) && log(
                   index1
                 ).term == term
               ) {

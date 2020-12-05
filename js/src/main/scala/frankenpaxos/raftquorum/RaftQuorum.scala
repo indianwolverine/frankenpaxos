@@ -7,8 +7,13 @@ import frankenpaxos.JsLogger
 import frankenpaxos.JsTransport
 import frankenpaxos.JsTransportAddress
 import frankenpaxos.quorums.SimpleMajority
-import frankenpaxos.statemachine.KeyValueStore
-
+import frankenpaxos.statemachine.{
+  GetRequest,
+  KeyValueStore,
+  KeyValueStoreInput,
+  SetKeyValuePair,
+  SetRequest
+}
 @JSExportAll
 class RaftQuorum {
   // Transport.
@@ -22,7 +27,7 @@ class RaftQuorum {
       JsTransportAddress("Participant 2"),
       JsTransportAddress("Participant 3"),
       JsTransportAddress("Participant 4"),
-      JsTransportAddress("Participant 5"),
+      JsTransportAddress("Participant 5")
     ),
     clientAddresses = List(
       JsTransportAddress("Client 1"),
@@ -30,8 +35,9 @@ class RaftQuorum {
       JsTransportAddress("Client 3")
     )
   )
-
-  val quorumSystem = new SimpleMajority((0 until config.participantAddresses.size).toSet)
+  val quorumSystem = new SimpleMajority(
+    (0 until config.participantAddresses.size).toSet,
+  )
 
   // Clients.
   val client1Logger = new JsLogger()
@@ -97,7 +103,7 @@ class RaftQuorum {
     config,
     new KeyValueStore()
   )
-  
+
   val participant5Logger = new JsLogger()
   val participant5 = new QuorumParticipant[JsTransport](
     JsTransportAddress("Participant 5"),
@@ -106,6 +112,20 @@ class RaftQuorum {
     config,
     new KeyValueStore()
   )
+
+  def serializeWrite(key: String, value: String): Array[Byte] = {
+    KeyValueStoreInput()
+      .withSetRequest(
+        SetRequest(keyValue = Seq(SetKeyValuePair(key = key, value = value)))
+      )
+      .toByteArray
+  }
+
+  def serializeRead(key: String): Array[Byte] = {
+    KeyValueStoreInput()
+      .withGetRequest(GetRequest(key = Seq(key)))
+      .toByteArray
+  }
 }
 
 @JSExportAll

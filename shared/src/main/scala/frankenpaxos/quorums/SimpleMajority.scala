@@ -34,7 +34,7 @@ class SimpleMajority[T](
   override def nodes(): Set[T] = members
 
   override def randomReadQuorum(): Set[T] =
-    rand.shuffle(members).take(quorumSize)
+    rand.shuffle(members.toVector).take(quorumSize).toSet
 
   override def randomWriteQuorum(): Set[T] = randomReadQuorum()
 

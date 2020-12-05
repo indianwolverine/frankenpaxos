@@ -31,7 +31,7 @@ let client_info = {
       <div>
         <div><strong>Leader Index</strong>: {{node.actor.leaderIndex}} </div>
         <div><strong>Participants</strong>: {{node.actor.raftParticipants}} </div>
-        <div><strong>Pending Action</strong>: {{this.node.actor.pending}} </div>
+        <div><strong>Pending Action</strong>: {{node.actor.pending}} </div>
         <div>
           <button v-on:click="write">Write (Key, Value)</button>
           <input v-model="writeKey"></input>

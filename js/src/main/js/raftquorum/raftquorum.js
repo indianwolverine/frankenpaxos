@@ -3,20 +3,27 @@ let client_info = {
 
   data: function () {
     return {
-      cmd: "",
+      writeKey: "",
+      writeValue: "",
+      readKey: "",
     };
   },
 
   methods: {
     write: function () {
-      if (this.cmd === "") {
+      if (this.writeKey === "" || this.writeValue === "") {
         return;
       }
-      console.log(this.node.actor.write(this.cmd));
-      this.cmd = "";
+      console.log(this.node.actor.write(this.raft.serializeWrite(this.writeKey, this.writeValue)));
+      this.writeKey = "";
+      this.writeValue = "";
     },
     read: function () {
-      console.log(this.node.actor.read(0));
+      if (this.readKey === "") {
+        return;
+      }
+      console.log(this.node.actor.read(this.raft.serializeRead(this.readKey)));
+      this.readKey = "";
     }
   },
 
@@ -24,13 +31,16 @@ let client_info = {
       <div>
         <div><strong>Leader Index</strong>: {{node.actor.leaderIndex}} </div>
         <div><strong>Participants</strong>: {{node.actor.raftParticipants}} </div>
-        <div><strong>Pending Action</strong>: {{this.node.actor.pending}} </div>
+        <div><strong>Quorum System</strong>: {{node.actor.quorumSystem}} </div>
+        <div><strong>Pending Action</strong>: {{node.actor.pending}} </div>
         <div>
-          <button v-on:click="write">Write Command</button>
-          <input v-model="cmd" v-on:keyup.enter="write"></input>
+          <button v-on:click="write">Write (Key, Value)</button>
+          <input v-model="writeKey"></input>
+          <input v-model="writeValue"></input>
         </div>
         <div>
-          <button v-on:click="read">Read Latest</button>
+          <button v-on:click="read">Read (Key)</button>
+          <input v-model="readKey" v-on:keyup.enter="read"></input>
         </div>
       </div>
     `,
@@ -39,18 +49,21 @@ let client_info = {
 let participant_info = {
   props: ['node'],
   template: `
-    <div>
-      <div><strong>State</strong>: {{node.actor.state}}</div>
-      <div><strong>Log</strong>: {{node.actor.log}}</div>
+  <div>
+    <div><strong>Participants</strong>: {{node.actor.participants}}</div>
+    <div><strong>Clients</strong>: {{node.actor.clients}}</div>
+    <div><strong>State</strong>: {{node.actor.state}}</div>
+    <div><strong>Log</strong>: {{node.actor.log}}</div>
+    <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
+    <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
+    <div><strong>State Machine (KV Store)</strong>: {{node.actor.stateMachine}}</div>
+    <div style="font-style: italic">
       <div><strong>Next Index</strong>: {{node.actor.nextIndex}}</div>
       <div><strong>Match Index</strong>: {{node.actor.matchIndex}}</div>
       <div><strong>Client Write Return</strong>: {{node.actor.clientWriteReturn}}</div>
-      <div><strong>Client Read Return</strong>: {{node.actor.clientReadReturn}}</div>
-      <div><strong>Commit Index</strong>: {{node.actor.commitIndex}}</div>
-      <div><strong>Last Applied</strong>: {{node.actor.lastApplied}}</div>
-      <div><strong>Participants</strong>: {{node.actor.participants}}</div>
-      <div><strong>Clients</strong>: {{node.actor.clients}}</div>
+      <div><strong>Client Read Return</strong>: {{node.actor.clientReads}}</div>
     </div>
+  </div>
   `,
 };
 
@@ -278,6 +291,14 @@ function main() {
       e: node_watch,
     },
   });
+
+  Vue.mixin({
+    data() {
+      return {
+        raft: RaftQuorum,
+      }
+    }
+  })
 
   // Select a node by clicking it.
   for (let node of Object.values(nodes)) {
