@@ -28,7 +28,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
     transport: Transport,
     logger: Logger,
     config: Config[Transport],
-    quorumSystem: QuorumSystem[Int]
+    val quorumSystem: QuorumSystem[Int]
 ) extends Actor(srcAddress, transport, logger) {
   override type InboundMessage = QuorumClientInbound
   override def serializer = QuorumClient.serializer
@@ -140,6 +140,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   private def rinse(
       query: Array[Byte]
   ): Unit = {
+    logger.info("Sending rinse...")
     raftParticipants(rand.nextInt(raftParticipants.size)).send(
       QuorumParticipantInbound().withClientQuorumQuery(
         ClientQuorumQuery(
@@ -176,8 +177,9 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
             pendingWrite.promise.failure(new Exception("Write failed"))
           }
         } else {
-          logger.info("Command successfully replicated!")
-          pendingWrite.promise.success(requestResponse.response.toByteArray())
+          val response = requestResponse.response.toByteArray()
+          logger.info(s"Output received: ${response}")
+          pendingWrite.promise.success(response)
           pending = None
         }
       case Some(_: PendingRead) =>
@@ -208,9 +210,11 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
           pendingRead.resendTimer.reset()
           if (quorumSystem.isReadQuorum(pendingRead.quorumResponses)) {
             // Quorum has already been reached, this must be a rinse response
+            logger.info("Got rinse response.")
             if (
               quorumQueryResponse.latestCommitted >= pendingRead.latestIndex
             ) {
+              logger.info("Entry got committed! Stopping rinses.")
               pendingRead.resendTimer.stop()
               pendingRead.rinseTimer.stop()
               pending = None
@@ -229,16 +233,19 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
             }
             // If Quorum has been reached for the first time
             if (quorumSystem.isReadQuorum(pendingRead.quorumResponses)) {
+              logger.info("Quorum reached!")
               if (
                 quorumQueryResponse.latestCommitted >= pendingRead.latestIndex
               ) {
                 // Already committed, no need to rinse
+                logger.info(s"No need to rinse, already committed, output: ${pendingRead.response}")
                 pendingRead.resendTimer.stop()
                 pendingRead.rinseTimer.stop()
                 pending = None
                 pendingRead.promise.success(pendingRead.response)
               } else {
                 // Need to rinse for the first time
+                logger.info("Starting rinsing...")
                 pendingRead.rinseTimer.start()
               }
             }

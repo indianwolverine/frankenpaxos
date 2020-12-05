@@ -145,8 +145,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             pendingWrite.promise.failure(new Exception("Write failed"))
           }
         } else {
-          logger.info("Command successfully replicated!")
-          pendingWrite.promise.success(requestResponse.response.toByteArray())
+          val response = requestResponse.response.toByteArray()
+          logger.info(s"Output received: ${response}")
+          pendingWrite.promise.success(response)
           pending = None
         }
       case Some(_: PendingRead) =>
@@ -187,8 +188,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             pendingRead.promise.failure(new Exception("Read failed"))
           }
         } else {
-          logger.info("Read Command successfully replicated!")
-          pendingRead.promise.success(queryResponse.response.toByteArray())
+          val response = queryResponse.response.toByteArray()
+          logger.info(s"Read output received: ${response}")
+          pendingRead.promise.success(response)
           pending = None
         }
       case None =>

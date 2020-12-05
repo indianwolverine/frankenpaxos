@@ -6,8 +6,8 @@ import frankenpaxos.Actor
 import frankenpaxos.JsLogger
 import frankenpaxos.JsTransport
 import frankenpaxos.JsTransportAddress
-import frankenpaxos.statemachine.KeyValueStore
 import frankenpaxos.statemachine.{
+  KeyValueStore,
   GetRequest,
   KeyValueStoreInput,
   SetKeyValuePair,
@@ -107,11 +107,11 @@ class Raft {
   )
 
   def serializeWrite(key: String, value: String): Array[Byte] = {
-  KeyValueStoreInput()
-    .withSetRequest(
-      SetRequest(keyValue = Seq(SetKeyValuePair(key = key, value = value)))
-    )
-    .toByteArray
+    KeyValueStoreInput()
+      .withSetRequest(
+        SetRequest(keyValue = Seq(SetKeyValuePair(key = key, value = value)))
+      )
+      .toByteArray
   }
 
   def serializeRead(key: String): Array[Byte] = {
