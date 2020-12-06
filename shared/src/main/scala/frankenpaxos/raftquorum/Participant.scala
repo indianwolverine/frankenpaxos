@@ -530,7 +530,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
                     )
                   )
                 )
-                clientWriteReturn.remove(index)
+                clientWriteReturn -= index
               }
             }
           } else {
@@ -666,7 +666,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         QuorumParticipantInbound().withVoteRequest(
           VoteRequest(term = term,
                       lastLogIndex = getPrevLogIndex(),
-                      lastLogTerm = getLastLogTerm()
+                      lastLogTerm = getPrevLogTerm()
           )
         )
       )
@@ -674,18 +674,6 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   // Helpers /////////////////////////////////////////////////////////////////
-
-  private def getLastLogIndex(): Int = {
-    log.length
-  }
-
-  private def getLastLogTerm(): Int = {
-    if (log.length > 0) {
-      return log(log.length - 1).term
-    } else {
-      return term - 1
-    }
-  }
 
   private def getPrevLogIndex(): Int = {
     log.length - 1

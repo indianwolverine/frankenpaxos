@@ -409,19 +409,18 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
-        val leaderIndex = participants.indexOf(leader)
         clients(src).send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
                                 response =
                                   ByteString.copyFromUtf8("NOT_LEADER"),
-                                leaderHint = leaderIndex
+                                leaderHint = participants.indexOf(leader)
             )
           )
         )
       }
       case Leader(pingTimer) => {
-        // Bump uuid to indentify this heartbeat
+        // Bump uuid to identify this heartbeat
         uuid += 1
         clientReads(uuid) = Tuple3(0, readQuery, clients(src))
 
@@ -458,9 +457,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         case LeaderlessFollower(_) | Candidate(_, _) => {
           transitionToFollower(appReq.term, src)
         }
-        case _ =>
-      }
-      state match {
         case Follower(noPingTimer, leader) => {
           noPingTimer.reset()
           // check that log contains entry at prevLogIndex with term == prevLogTerm
@@ -582,7 +578,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                     )
                   )
                 )
-                clientWriteReturn.remove(index)
+                clientWriteReturn -= index
               }
             }
             // Handle read majority if reached
@@ -748,7 +744,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         ParticipantInbound().withVoteRequest(
           VoteRequest(term = term,
                       lastLogIndex = getPrevLogIndex(),
-                      lastLogTerm = getLastLogTerm()
+                      lastLogTerm = getPrevLogTerm()
           )
         )
       )
@@ -756,18 +752,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   // Helpers /////////////////////////////////////////////////////////////////
-
-  private def getLastLogIndex(): Int = {
-    log.length
-  }
-
-  private def getLastLogTerm(): Int = {
-    if (log.length > 0) {
-      return log(log.length - 1).term
-    } else {
-      return term - 1
-    }
-  }
 
   private def getPrevLogIndex(): Int = {
     log.length - 1

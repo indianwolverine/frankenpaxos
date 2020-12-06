@@ -146,7 +146,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
           }
         } else {
           val response = requestResponse.response.toByteArray()
-          logger.info(s"Output received: ${response}")
+          logger.info(s"Write output received: ${response}")
           pendingWrite.promise.success(response)
           pending = None
         }
