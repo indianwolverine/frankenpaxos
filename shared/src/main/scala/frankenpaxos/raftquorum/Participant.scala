@@ -15,6 +15,7 @@ import frankenpaxos.raft.{
 }
 import frankenpaxos.{Actor, Chan, Logger, ProtoSerializer, Util}
 import frankenpaxos.statemachine.StateMachine
+import frankenpaxos.quorums.QuorumSystem
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
@@ -42,6 +43,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
     logger: Logger,
     config: Config[Transport],
     val stateMachine: StateMachine,
+    val quorumSystem: QuorumSystem[Int],
     leader: Option[Transport#Address] = None,
     options: ElectionOptions = ElectionOptions.default
 ) extends Actor(address, transport, logger) {
@@ -62,7 +64,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
   @JSExportAll
   case class Candidate(
       notEnoughVotesTimer: Transport#Timer,
-      votes: Set[Transport#Address]
+      votes: Set[Int]
   ) extends ElectionState
 
   @JSExportAll
@@ -291,13 +293,13 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
           return
         }
 
-        val newState = Candidate(notEnoughVotesTimer, votes + src)
+        val newState = Candidate(notEnoughVotesTimer, votes + config.participantAddresses.indexOf(src))
         state = newState
 
         // If we've received votes from a majority of the nodes, then we are
         // the leader for this term. `addresses.size / 2 + 1` is just a
         // formula for a majority.
-        if (newState.votes.size >= (participants.size / 2 + 1)) {
+        if (quorumSystem.isWriteQuorum(newState.votes)) {
           transitionToLeader()
         }
       }
@@ -496,15 +498,15 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
             // set commitIndex = N
             val oldCommitIndex = commitIndex
             for ((addr1, index1) <- matchIndex) {
-              var count: Int = 0
+              var count: Set[Int] = Set()
+              count += config.participantAddresses.indexOf(address)
               for ((addr2, index2) <- matchIndex) {
                 if (index2 >= index1) {
-                  count += 1
+                  count += config.participantAddresses.indexOf(addr2)
                 }
               }
               if (
-                // No + 1 here because the leader has the longest log
-                count >= ((participants.size / 2)) && log(
+                quorumSystem.isWriteQuorum(count) && log(
                   index1
                 ).term == term
               ) {
