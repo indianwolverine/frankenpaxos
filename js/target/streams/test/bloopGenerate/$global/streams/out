@@ -1,0 +1,4 @@
+[debug] [frankenpaxosJS-test] Classpath dependencies List()
+[debug] [frankenpaxosJS-test] Dependencies from configurations List(frankenpaxosJS)
+[debug] Bloop wrote the configuration of project 'frankenpaxosJS-test' to '/home/bernardzhao/dev/frankenpaxos/.bloop/frankenpaxosJS-test.json'
+[success] Generated .bloop/frankenpaxosJS-test.json

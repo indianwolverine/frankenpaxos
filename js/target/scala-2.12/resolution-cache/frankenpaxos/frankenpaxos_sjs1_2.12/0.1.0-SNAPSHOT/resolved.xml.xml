@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ivy-module version="2.0" xmlns:e="http://ant.apache.org/ivy/extra">
+	<info organisation="frankenpaxos"
+		module="frankenpaxos_sjs1_2.12"
+		revision="0.1.0-SNAPSHOT"
+		status="integration"
+		publication="20201030163720"
+	>
+		<description>
+		frankenpaxos
+		</description>
+	</info>
+	<configurations>
+		<conf name="compile" visibility="public" description=""/>
+		<conf name="runtime" visibility="public" description="" extends="compile"/>
+		<conf name="test" visibility="public" description="" extends="runtime"/>
+		<conf name="provided" visibility="public" description=""/>
+		<conf name="optional" visibility="public" description=""/>
+		<conf name="protobuf" visibility="public" description=""/>
+		<conf name="bench" visibility="public" description="" extends="test"/>
+		<conf name="compile-internal" visibility="private" description="" extends="compile,optional,provided"/>
+		<conf name="runtime-internal" visibility="private" description="" extends="runtime,optional"/>
+		<conf name="test-internal" visibility="private" description="" extends="test,optional,provided"/>
+		<conf name="plugin" visibility="private" description=""/>
+		<conf name="pom" visibility="public" description=""/>
+		<conf name="scala-tool" visibility="private" description=""/>
+	</configurations>
+	<publications>
+		<artifact name="frankenpaxos_sjs1_2.12" type="pom" ext="pom" conf="pom"/>
+		<artifact name="frankenpaxos_sjs1_2.12" type="jar" ext="jar" conf="compile"/>
+		<artifact name="frankenpaxos_sjs1_2.12" type="src" ext="jar" conf="compile" e:classifier="sources"/>
+		<artifact name="frankenpaxos_sjs1_2.12" type="doc" ext="jar" conf="compile" e:classifier="javadoc"/>
+	</publications>
+	<dependencies>
+		<dependency org="org.scala-lang" name="scala-compiler" rev="2.12.6" conf="scala-tool->default,optional(default)"/>
+		<dependency org="org.scala-lang" name="scala-library" rev="2.12.6" conf="scala-tool->default,optional(default);compile->default(compile)"/>
+		<dependency org="org.scala-js" name="scalajs-compiler_2.12.6" rev="1.3.0" conf="plugin->default(compile)"/>
+		<dependency org="org.scala-js" name="scalajs-library_2.12" rev="1.3.0" conf="compile->default(compile);provided->default(compile)"/>
+		<dependency org="org.scala-js" name="scalajs-test-bridge_2.12" rev="1.3.0" conf="test->default(compile)"/>
+		<dependency org="com.thesamet.scalapb" name="scalapb-runtime_2.12" rev="0.7.4" conf="compile->default(compile)"/>
+		<dependency org="com.github.scopt" name="scopt_2.12" rev="3.7.0" conf="compile->default(compile)"/>
+		<dependency org="com.github.tototoshi" name="scala-csv_2.12" rev="1.3.5" conf="compile->default(compile)"/>
+		<dependency org="com.storm-enroute" name="scalameter_2.12" rev="0.18" conf="compile->default(compile)"/>
+		<dependency org="com.thesamet.scalapb" name="scalapb-runtime_sjs1_2.12" rev="0.7.4" conf="protobuf->default(compile);compile->default(compile)"/>
+		<dependency org="io.netty" name="netty-all" rev="4.1.34.Final" conf="compile->default(compile)"/>
+		<dependency org="io.prometheus" name="simpleclient" rev="0.6.0" conf="compile->default(compile)"/>
+		<dependency org="io.prometheus" name="simpleclient_hotspot" rev="0.6.0" conf="compile->default(compile)"/>
+		<dependency org="io.prometheus" name="simpleclient_httpserver" rev="0.6.0" conf="compile->default(compile)"/>
+		<dependency org="org.jgrapht" name="jgrapht-core" rev="1.1.0" conf="compile->default(compile)"/>
+		<dependency org="org.scala-graph" name="graph-core_2.12" rev="1.12.5" conf="compile->default(compile)"/>
+		<dependency org="org.scala-graph" name="graph-core_sjs1_2.12" rev="1.12.5" conf="compile->default(compile)"/>
+		<dependency org="org.scala-js" name="scalajs-stubs_2.12" rev="1.3.0" conf="provided->default(compile)"/>
+		<dependency org="org.scalacheck" name="scalacheck_2.12" rev="1.14.0" conf="compile->default(compile)"/>
+		<dependency org="org.scalactic" name="scalactic_2.12" rev="3.0.5" conf="compile->default(compile)"/>
+		<dependency org="org.scalatest" name="scalatest_2.12" rev="3.0.5" conf="compile->default(compile)"/>
+		<dependency org="org.scala-js" name="scalajs-java-time_sjs1_2.12" rev="0.2.5" conf="compile->default(compile)"/>
+	</dependencies>
+</ivy-module>

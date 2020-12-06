@@ -1,0 +1,6 @@
+[0m[[0m[31merror[0m] [0m[0m/home/bernardzhao/dev/frankenpaxos/shared/src/main/scala/frankenpaxos/raftquorum/Participant.scala:302:30: type mismatch;[0m
+[0m[[0m[31merror[0m] [0m[0m found   : Set[Int][0m
+[0m[[0m[31merror[0m] [0m[0m required: String[0m
+[0m[[0m[31merror[0m] [0m[0m        logger.info(newState.votes)[0m
+[0m[[0m[31merror[0m] [0m[0m                             ^[0m
+[0m[[0m[31merror[0m] [0m[0mone error found[0m

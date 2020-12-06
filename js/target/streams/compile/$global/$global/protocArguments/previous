@@ -1,0 +1,1 @@
+["sbt.Task[sbtprotoc.ProtocPlugin$Arguments]",[["shared/src/main/scala","jvm/src/main/scala","file:///home/bernardzhao/dev/frankenpaxos/js/target/protobuf_external/"],[],true,[["file:///home/bernardzhao/dev/frankenpaxos/js/target/scala-2.12/src_managed/main/",["grpc"]]]]]
