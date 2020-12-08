@@ -7,6 +7,8 @@ import frankenpaxos.NettyTcpAddress
 import frankenpaxos.NettyTcpTransport
 import frankenpaxos.PrintLogger
 import frankenpaxos.PrometheusUtil
+import frankenpaxos.statemachine
+import frankenpaxos.statemachine.StateMachine
 import frankenpaxos.statemachine.AppendLog
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
@@ -22,6 +24,7 @@ object ParticipantMain extends App {
       index: Int = -1,
       configFile: File = new File("."),
       logLevel: frankenpaxos.LogLevel = frankenpaxos.LogDebug,
+      stateMachine: StateMachine = new statemachine.Noop(),
       // Monitoring.
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
@@ -37,6 +40,9 @@ object ParticipantMain extends App {
     opt[Int]("index").required().action((x, f) => f.copy(index = x))
     opt[File]("config").required().action((x, f) => f.copy(configFile = x))
     opt[LogLevel]("log_level").required().action((x, f) => f.copy(logLevel = x))
+    opt[StateMachine]("state_machine")
+      .required()
+      .action((x, f) => f.copy(stateMachine = x))
 
     // Monitoring.
     opt[String]("prometheus_host")
@@ -62,6 +68,7 @@ object ParticipantMain extends App {
     transport = new NettyTcpTransport(logger),
     logger = logger,
     config = config,
+    stateMachine = flags.stateMachine,
     options = flags.options
   )
 
