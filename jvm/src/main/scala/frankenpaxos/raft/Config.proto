@@ -1,0 +1,37 @@
+syntax = "proto2";
+
+package frankenpaxos.raft;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  package_name: "frankenpaxos.raft"
+  flat_package: true
+};
+
+message HostPortProto {
+  required string host = 1;
+  required int32 port = 2;
+}
+
+enum DistributionSchemeProto {
+  HASH = 0;
+  COLOCATED = 1;
+}
+
+message AcceptorGroup {
+  repeated HostPortProto acceptor_address = 6;
+}
+
+message NettyConfigProto {
+  required int32 f = 1;
+  repeated HostPortProto batcher_address = 2;
+  repeated HostPortProto read_batcher_address = 3;
+  repeated HostPortProto leader_address = 4;
+  repeated HostPortProto leader_election_address = 5;
+  repeated HostPortProto proxy_leader_address = 6;
+  repeated AcceptorGroup acceptor_address = 7;
+  repeated HostPortProto replica_address = 8;
+  repeated HostPortProto proxy_replica_address = 9;
+  required DistributionSchemeProto distribution_scheme = 10;
+}
