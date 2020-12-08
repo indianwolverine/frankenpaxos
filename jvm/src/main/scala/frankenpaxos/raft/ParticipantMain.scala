@@ -1,4 +1,4 @@
-package frankenpaxos.multipaxos
+package frankenpaxos.raft
 
 import frankenpaxos.Actor
 import frankenpaxos.Flags.durationRead
@@ -15,7 +15,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import scala.concurrent.duration
 
-object AcceptorMain extends App {
+object ParticipantMain extends App {
   case class Flags(
       // Basic flags.
       groupIndex: Int = -1,
@@ -26,7 +26,7 @@ object AcceptorMain extends App {
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
       // Options.
-      options: AcceptorOptions = AcceptorOptions.default
+      options: ElectionOptions = ElectionOptions.default
   )
 
   val parser = new scopt.OptionParser[Flags]("") {
@@ -54,10 +54,10 @@ object AcceptorMain extends App {
       throw new IllegalArgumentException("Could not parse flags.")
   }
 
-  // Construct acceptor.
+  // Construct participant.
   val logger = new PrintLogger(flags.logLevel)
   val config = ConfigUtil.fromFile(flags.configFile.getAbsolutePath())
-  val acceptor = new Acceptor[NettyTcpTransport](
+  val participant = new Participant[NettyTcpTransport](
     address = config.acceptorAddresses(flags.groupIndex)(flags.index),
     transport = new NettyTcpTransport(logger),
     logger = logger,
