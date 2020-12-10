@@ -63,10 +63,11 @@ object ParticipantMain extends App {
 
   // Construct participant.
   val logger = new PrintLogger(flags.logLevel)
+  val transport = new NettyTcpTransport(logger)
   val config = ConfigUtil.fromFile(flags.configFile.getAbsolutePath())
   val participant = new Participant[NettyTcpTransport](
     address = config.participantAddresses(flags.index),
-    transport = new NettyTcpTransport(logger),
+    transport = transport,
     logger = logger,
     config = config,
     stateMachine = flags.stateMachine,

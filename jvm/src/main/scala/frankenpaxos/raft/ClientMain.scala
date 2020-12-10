@@ -176,31 +176,25 @@
 //   // Construct client.
 //   val logger = new PrintLogger(flags.logLevel)
 //   val transport = new NettyTcpTransport(logger)
+//   val config = ConfigUtil.fromFile(flags.configFile.getAbsolutePath())
 //   val client = new Client[NettyTcpTransport](
-//     address = NettyTcpAddress(new InetSocketAddress(flags.host, flags.port)),
+//     srcAddress = NettyTcpAddress(new InetSocketAddress(flags.host, flags.port)),
 //     transport = transport,
 //     logger = logger,
-//     config = ConfigUtil.fromFile(flags.configFile.getAbsolutePath()),
-//     options = flags.options,
-//     metrics = new ClientMetrics(PrometheusCollectors)
+//     config = config,
 //   )
 
 //   // Functions to warmup and run the clients. When warming up, we don't record
 //   // any stats.
 //   def warmupRun(
-//       pseudonym: Int,
 //       workload: ReadWriteWorkload
 //   ): Future[Unit] = {
 //     implicit val context = transport.executionContext
-//     val (future, error) = (workload.get(), flags.readConsistency) match {
-//       case (Write(command), _) =>
-//         (client.write(pseudonym, command), "Write failed.")
-//       case (Read(command), Linearizable) =>
-//         (client.read(pseudonym, command), "Read failed.")
-//       case (Read(command), Sequential) =>
-//         (client.sequentialRead(pseudonym, command), "Sequential read failed.")
-//       case (Read(command), Eventual) =>
-//         (client.eventualRead(pseudonym, command), "Eventual read failed.")
+//     val (future, error) = workload.get() match {
+//       case Write(command) =>
+//         (client.write(command), "Write failed.")
+//       case Read(command) =>
+//         (client.read(command), "Read failed.")
 //     }
 
 //     future.transformWith({
@@ -219,19 +213,11 @@
 //   )
 //   def run(pseudonym: Int, workload: ReadWriteWorkload): Future[Unit] = {
 //     implicit val context = transport.executionContext
-//     val (f, error, label) = (workload.get(), flags.readConsistency) match {
-//       case (Write(command), _) =>
-//         (() => client.write(pseudonym, command), "Write failed.", "write")
-//       case (Read(command), Linearizable) =>
-//         (() => client.read(pseudonym, command), "Read failed.", "read")
-//       case (Read(command), Sequential) =>
-//         (() => client.sequentialRead(pseudonym, command),
-//          "Sequential read failed.",
-//          "read")
-//       case (Read(command), Eventual) =>
-//         (() => client.eventualRead(pseudonym, command),
-//          "Eventual read failed.",
-//          "read")
+//     val (f, error, label) = workload.get() match {
+//       case Write(command) =>
+//         (() => client.write(command), "Write failed.", "write")
+//       case Read(command) =>
+//         (() => client.read(command), "Read failed.", "read")
 //     }
 
 //     BenchmarkUtil
@@ -258,7 +244,7 @@
 //     if (flags.predeterminedReadFraction == -1) {
 //       for (pseudonym <- 0 until flags.numWarmupClients)
 //         yield
-//           BenchmarkUtil.runFor(() => warmupRun(pseudonym, flags.workload),
+//           BenchmarkUtil.runFor(() => warmupRun(flags.workload),
 //                                flags.warmupDuration)
 //     } else {
 //       val readerFraction = flags.predeterminedReadFraction.toFloat / 100
