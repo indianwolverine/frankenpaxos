@@ -8,8 +8,11 @@ import frankenpaxos.NettyTcpTransport
 import frankenpaxos.PrintLogger
 import frankenpaxos.PrometheusUtil
 import frankenpaxos.statemachine
-import frankenpaxos.statemachine.StateMachine
-import frankenpaxos.statemachine.AppendLog
+import frankenpaxos.statemachine.{
+  StateMachine,
+  KeyValueStore,
+  AppendLog,
+}
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import java.io.File
@@ -20,11 +23,10 @@ import scala.concurrent.duration
 object ParticipantMain extends App {
   case class Flags(
       // Basic flags.
-      groupIndex: Int = -1,
       index: Int = -1,
       configFile: File = new File("."),
       logLevel: frankenpaxos.LogLevel = frankenpaxos.LogDebug,
-      stateMachine: StateMachine = new statemachine.Noop(),
+      stateMachine: StateMachine = new KeyValueStore(),
       // Monitoring.
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
@@ -36,7 +38,6 @@ object ParticipantMain extends App {
     help("help")
 
     // Basic flags.
-    opt[Int]("group_index").required().action((x, f) => f.copy(groupIndex = x))
     opt[Int]("index").required().action((x, f) => f.copy(index = x))
     opt[File]("config").required().action((x, f) => f.copy(configFile = x))
     opt[LogLevel]("log_level").required().action((x, f) => f.copy(logLevel = x))
@@ -64,7 +65,7 @@ object ParticipantMain extends App {
   val logger = new PrintLogger(flags.logLevel)
   val config = ConfigUtil.fromFile(flags.configFile.getAbsolutePath())
   val participant = new Participant[NettyTcpTransport](
-    address = config.acceptorAddresses(flags.groupIndex)(flags.index),
+    address = config.participantAddresses(flags.index),
     transport = new NettyTcpTransport(logger),
     logger = logger,
     config = config,
