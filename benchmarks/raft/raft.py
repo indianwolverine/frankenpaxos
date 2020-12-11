@@ -189,19 +189,19 @@ class RaftSuite(benchmark.Suite[Input, Output]):
                     participant.host.ip(),
                     '--prometheus_port',
                     str(participant.port + 1) if input.monitored else '-1',
-                    '--options.election.pingPeriod',
+                    '--options.pingPeriod',
                     '{}s'.format(input.participant_options.
                                  ping_period.total_seconds()),
-                    '--options.election.noPingTimeoutMin',
+                    '--options.noPingTimeoutMin',
                     '{}s'.format(input.participant_options.
                                  no_ping_timeout_min.total_seconds()),
-                    '--options.election.noPingTimeoutMax',
+                    '--options.noPingTimeoutMax',
                     '{}s'.format(input.participant_options.
                                  no_ping_timeout_max.total_seconds()),
-                    '--options.election.notEnoughVotesTimeoutMin',
+                    '--options.notEnoughVotesTimeoutMin',
                     '{}s'.format(input.participant_options.
                                  not_enough_votes_timeout_min.total_seconds()),
-                    '--options.election.notEnoughVotesTimeoutMax',
+                    '--options.notEnoughVotesTimeoutMax',
                     '{}s'.format(input.participant_options.
                                  not_enough_votes_timeout_max.total_seconds()),
                 ],

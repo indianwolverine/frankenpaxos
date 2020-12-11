@@ -60,15 +60,15 @@ object ParticipantMain extends App {
       .text(s"-1 to disable")
 
     // Options.
-    opt[java.time.Duration]("options.election.pingPeriod")
+    opt[java.time.Duration]("options.pingPeriod")
       .optionAction((x, o) => o.copy(pingPeriod = x))
-    opt[java.time.Duration]("options.election.noPingTimeoutMin")
+    opt[java.time.Duration]("options.noPingTimeoutMin")
       .optionAction((x, o) => o.copy(noPingTimeoutMin = x))  
-    opt[java.time.Duration]("options.election.noPingTimeoutMax")
+    opt[java.time.Duration]("options.noPingTimeoutMax")
       .optionAction((x, o) => o.copy(noPingTimeoutMax = x))
-    opt[java.time.Duration]("options.election.notEnoughVotesTimeoutMin")
+    opt[java.time.Duration]("options.notEnoughVotesTimeoutMin")
       .optionAction((x, o) => o.copy(notEnoughVotesTimeoutMin = x))
-    opt[java.time.Duration]("options.election.notEnoughVotesTimeoutMax")
+    opt[java.time.Duration]("options.notEnoughVotesTimeoutMax")
       .optionAction((x, o) => o.copy(notEnoughVotesTimeoutMax = x))
   }
 
