@@ -1,12 +1,28 @@
 from .. import benchmark
 from .. import cluster
 from .. import host
-from .. import workload
+from .. import parser_util
+from .. import pd_util
+from .. import perf_util
+from .. import proc
+from .. import prometheus
 from .. import proto_util
-from ..workload import Workload
-from typing import Any, Dict, List, NamedTuple
+from .. import read_write_workload
+from .. import util
+from typing import Any, Callable, Collection, Dict, List, NamedTuple, Optional
 import argparse
+import csv
 import datetime
+import enum
+import enum
+import itertools
+import os
+import pandas as pd
+import paramiko
+import subprocess
+import time
+import tqdm
+import yaml
 
 
 class ClientOptions(NamedTuple):
@@ -33,6 +49,7 @@ class Input(NamedTuple):
     num_clients_per_proc: int
 
     # Benchmark parameters. ####################################################
+    measurement_group_size: int
     warmup_duration: datetime.timedelta
     warmup_timeout: datetime.timedelta
     warmup_sleep: datetime.timedelta
@@ -40,7 +57,11 @@ class Input(NamedTuple):
     timeout: datetime.timedelta
     client_lag: datetime.timedelta
     state_machine: str
-    workload: Workload
+    predetermined_read_fraction: int
+    workload_label: str
+    workload: read_write_workload.ReadWriteWorkload
+    read_workload: read_write_workload.ReadWriteWorkload
+    write_workload: read_write_workload.ReadWriteWorkload
     profiled: bool
     monitored: bool
     prometheus_scrape_interval: datetime.timedelta
@@ -68,15 +89,6 @@ class RaftNet:
         self._cluster = cluster.f(input.f)
         self._input = input
 
-    def _connect(self, address: str) -> host.Host:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
-        if self._key_filename:
-            client.connect(address, key_filename=self._key_filename)
-        else:
-            client.connect(address)
-        return host.RemoteHost(client)
-
     class Placement(NamedTuple):
         clients: List[host.Endpoint]
         participants: List[host.Endpoint]
@@ -101,7 +113,7 @@ class RaftNet:
 
     def config(self) -> proto_util.Message:
         return {
-            "f": self._input.f,
+            # "f": self._input.f,
             "participant_address": [
                 {"host": e.host.ip(), "port": e.port}
                 for e in self.placement().participants
@@ -134,12 +146,12 @@ class RaftSuite(benchmark.Suite[Input, Output]):
             cmd = ['java', f'-Xms{heap_size}', f'-Xmx{heap_size}']
             if input.monitored:
                 cmd += [
-                    '-verbose:gc',
-                    '-XX:-PrintGC',
-                    '-XX:+PrintHeapAtGC',
-                    '-XX:+PrintGCDetails',
-                    '-XX:+PrintGCTimeStamps',
-                    '-XX:+PrintGCDateStamps',
+                    # '-verbose:gc',
+                    # '-XX:-PrintGC',
+                    # '-XX:+PrintHeapAtGC',
+                    # '-XX:+PrintGCDetails',
+                    # '-XX:+PrintGCTimeStamps',
+                    # '-XX:+PrintGCDateStamps',
                 ]
             return cmd
 
@@ -157,7 +169,7 @@ class RaftSuite(benchmark.Suite[Input, Output]):
             p = bench.popen(
                 host=participant.host,
                 label=f'participant_{i}',
-                cmd=java(input.participant_jvm_heap_size) + [
+                cmd=java("100m") + [
                     '-cp',
                     os.path.abspath(args['jar']),
                     'frankenpaxos.raft.ParticipantMain',
@@ -172,19 +184,19 @@ class RaftSuite(benchmark.Suite[Input, Output]):
                     '--prometheus_port',
                     str(participant.port + 1) if input.monitored else '-1',
                     '--options.election.pingPeriod',
-                    '{}s'.format(input.participant_options.election_options.
+                    '{}s'.format(input.participant_options.
                                  ping_period.total_seconds()),
                     '--options.election.noPingTimeoutMin',
-                    '{}s'.format(input.participant_options.election_options.
+                    '{}s'.format(input.participant_options.
                                  no_ping_timeout_min.total_seconds()),
                     '--options.election.noPingTimeoutMax',
-                    '{}s'.format(input.participant_options.election_options.
+                    '{}s'.format(input.participant_options.
                                  no_ping_timeout_max.total_seconds()),
                     '--options.election.notEnoughVotesTimeoutMin',
-                    '{}s'.format(input.participant_options.election_options.
+                    '{}s'.format(input.participant_options.
                                  not_enough_votes_timeout_min.total_seconds()),
                     '--options.election.notEnoughVotesTimeoutMax',
-                    '{}s'.format(input.participant_options.election_options.
+                    '{}s'.format(input.participant_options.
                                  not_enough_votes_timeout_max.total_seconds()),
                 ],
             )
@@ -244,7 +256,7 @@ class RaftSuite(benchmark.Suite[Input, Output]):
                 # TODO(mwhittaker): For now, we don't run clients with large
                 # heaps and verbose garbage collection because they are all
                 # colocated on one machine.
-                cmd=java(input.client_jvm_heap_size) + [
+                cmd=java("100m") + [
                     '-cp',
                     os.path.abspath(args['jar']),
                     'frankenpaxos.raft.ClientMain',
@@ -278,8 +290,6 @@ class RaftSuite(benchmark.Suite[Input, Output]):
                     f'{input.num_clients_per_proc}',
                     '--output_file_prefix',
                     bench.abspath(f'client_{i}'),
-                    '--read_consistency',
-                    f'{input.read_consistency}',
                     '--predetermined_read_fraction',
                     f'{input.predetermined_read_fraction}',
                     '--workload',
