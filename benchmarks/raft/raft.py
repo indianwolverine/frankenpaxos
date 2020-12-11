@@ -114,9 +114,13 @@ class RaftNet:
     def config(self) -> proto_util.Message:
         return {
             # "f": self._input.f,
-            "participant_address": [
+            "participant_addresses": [
                 {"host": e.host.ip(), "port": e.port}
                 for e in self.placement().participants
+            ],
+            "client_addresses": [
+                {"host": e.host.ip(), "port": e.port}
+                for e in self.placement().clients
             ],
         }
 
