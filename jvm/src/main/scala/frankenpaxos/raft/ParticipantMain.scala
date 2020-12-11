@@ -34,6 +34,13 @@ object ParticipantMain extends App {
       options: ElectionOptions = ElectionOptions.default
   )
 
+  implicit class OptionsWrapper[A](o: scopt.OptionDef[A, Flags]) {
+    def optionAction(
+        f: (A, ElectionOptions) => ElectionOptions
+    ): scopt.OptionDef[A, Flags] =
+      o.action((x, flags) => flags.copy(options = f(x, flags.options)))
+  }
+
   val parser = new scopt.OptionParser[Flags]("") {
     help("help")
 
@@ -51,6 +58,18 @@ object ParticipantMain extends App {
     opt[Int]("prometheus_port")
       .action((x, f) => f.copy(prometheusPort = x))
       .text(s"-1 to disable")
+
+    // Options.
+    opt[java.time.Duration]("options.election.pingPeriod")
+      .optionAction((x, o) => o.copy(pingPeriod = x))
+    opt[java.time.Duration]("options.election.noPingTimeoutMin")
+      .optionAction((x, o) => o.copy(noPingTimeoutMin = x))  
+    opt[java.time.Duration]("options.election.noPingTimeoutMax")
+      .optionAction((x, o) => o.copy(noPingTimeoutMax = x))
+    opt[java.time.Duration]("options.election.notEnoughVotesTimeoutMin")
+      .optionAction((x, o) => o.copy(notEnoughVotesTimeoutMin = x))
+    opt[java.time.Duration]("options.election.notEnoughVotesTimeoutMax")
+      .optionAction((x, o) => o.copy(notEnoughVotesTimeoutMax = x))
   }
 
   // Parse flags.
