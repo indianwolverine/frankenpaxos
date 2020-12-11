@@ -90,7 +90,8 @@ object ParticipantMain extends App {
     logger = logger,
     config = config,
     stateMachine = flags.stateMachine,
-    options = flags.options
+    options = flags.options,
+    leader = Some(config.participantAddresses(0)),
   )
 
   // Start Prometheus.

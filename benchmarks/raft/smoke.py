@@ -36,7 +36,17 @@ def main(args) -> None:
                     monitored = args.monitor,
                     prometheus_scrape_interval =
                         datetime.timedelta(milliseconds=200),
-                    participant_options = ElectionOptions(),
+                    participant_options = ElectionOptions(
+                        ping_period = datetime.timedelta(seconds=60),
+                        no_ping_timeout_min = \
+                            datetime.timedelta(seconds=120),
+                        no_ping_timeout_max = \
+                            datetime.timedelta(seconds=240),
+                        not_enough_votes_timeout_min = \
+                            datetime.timedelta(seconds=120),
+                        not_enough_votes_timeout_max = \
+                            datetime.timedelta(seconds=240),
+                    ),
                     participant_log_level = args.log_level,
                     client_options = ClientOptions(),
                     client_log_level = args.log_level,
