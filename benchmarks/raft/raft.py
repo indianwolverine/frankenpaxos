@@ -177,6 +177,8 @@ class RaftSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--config',
                     config_filename,
+                    '--state_machine',
+                    input.state_machine,
                     '--log_level',
                     input.participant_log_level,
                     '--prometheus_host',
