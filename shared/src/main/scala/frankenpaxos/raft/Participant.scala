@@ -80,7 +80,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   @JSExportAll
   case class Candidate(
       notEnoughVotesTimer: Transport#Timer,
-      votes: Set[Transport#Address]
+      votes: Set[Int]
   ) extends ElectionState
 
   @JSExportAll
@@ -319,7 +319,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           return
         }
 
-        val newState = Candidate(notEnoughVotesTimer, votes + src)
+        val newState = Candidate(notEnoughVotesTimer, votes + vote.participantIndex)
         state = newState
 
         // If we've received votes from a majority of the nodes, then we are

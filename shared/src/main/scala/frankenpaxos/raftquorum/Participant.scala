@@ -296,7 +296,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
           return
         }
 
-        val newState = Candidate(notEnoughVotesTimer, votes + config.participantAddresses.indexOf(src))
+        val newState = Candidate(notEnoughVotesTimer, votes + vote.participantIndex)
         state = newState
 
         // If we've received votes from a majority of the nodes, then we are
@@ -513,10 +513,10 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
             val oldCommitIndex = commitIndex
             for ((addr1, index1) <- matchIndex) {
               var count: Set[Int] = Set()
-              count += config.participantAddresses.indexOf(address)
-              for ((addr2, index2) <- matchIndex) {
+              count += participantIndex
+              for ((nodeIndex, index2) <- matchIndex) {
                 if (index2 >= index1) {
-                  count += config.participantAddresses.indexOf(addr2)
+                  count += nodeIndex
                 }
               }
               if (
@@ -714,7 +714,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
       participantIndex = participantIndex
     )
     logger.info(
-      s"Sending AppendEntriesRequest to ${address}"
+      s"Sending AppendEntriesRequest to ${nodes(index)}"
         + s" | Term: ${request.term}"
         + s" | PrevLogIndex = ${request.prevLogIndex}"
         + s" | PrevLogTerm = ${request.prevLogTerm}"
