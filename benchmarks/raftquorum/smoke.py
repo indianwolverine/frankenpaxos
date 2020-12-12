@@ -1,8 +1,8 @@
-from .raft import *
+from .raftquorum import *
 
 
 def main(args) -> None:
-    class SmokeRaftSuite(RaftSuite):
+    class SmokeRaftQuorumSuite(RaftQuorumSuite):
         def args(self) -> Dict[Any, Any]:
             return vars(args)
 
@@ -55,9 +55,9 @@ def main(args) -> None:
                     f'{output.write_output.start_throughput_1s.p90:.6}',
             })
 
-    suite = SmokeRaftSuite()
+    suite = SmokeRaftQuorumSuite()
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'raft_smoke') as dir:
+                                  'raftquorum_smoke') as dir:
         suite.run_suite(dir)
 
 
