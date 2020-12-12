@@ -92,6 +92,7 @@ object ParticipantMain extends App {
     stateMachine = flags.stateMachine,
     options = flags.options,
     leader = Some(config.participantAddresses(0)),
+    participantIndex = flags.index
   )
 
   // Start Prometheus.
