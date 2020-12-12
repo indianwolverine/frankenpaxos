@@ -342,10 +342,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Command: ${clientRequest.cmd}"
     )
 
+    // send back to client channel
+    val client = chan[Client[Transport]](src, Client.serializer)
+
     state match {
       case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(
+        client.send(
           ClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
                                   response =
@@ -357,7 +360,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(_, leader) => {
         // we know leader, so send back index of leader
-        clients(src).send(
+        client.send(
           ClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
                                   response =
@@ -372,7 +375,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         log.append(LogEntry(term = term, command = clientRequest.cmd))
 
         // keep track of which client is associated with this log entry
-        clientWriteReturn.update(getPrevLogIndex(), clients(src))
+        clientWriteReturn.update(getPrevLogIndex(), client)
 
         // send AppendEntriesRequest to all other participants if possible
         for (addr <- participants) {
@@ -394,10 +397,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Query: ${readQuery.query}"
     )
 
+    // send back to client channel
+    val client = chan[Client[Transport]](src, Client.serializer)
+
     state match {
       case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(
+        client.send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
                                 response =
@@ -409,7 +415,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
-        clients(src).send(
+        client.send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
                                 response =
@@ -422,7 +428,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Leader(pingTimer) => {
         // Bump uuid to identify this heartbeat
         uuid += 1
-        clientReads(uuid) = Tuple3(0, readQuery, clients(src))
+        clientReads(uuid) = Tuple3(0, readQuery, client)
 
         // send heartbeats to all other participants
         for (addr <- participants) {
