@@ -319,10 +319,13 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Command: ${clientRequest.cmd}"
     )
 
+    // send back to client channel
+    val client = chan[QuorumClient[Transport]](src, QuorumClient.serializer)
+
     state match {
       case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(
+        client.send(
           QuorumClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
                                   response =
@@ -334,7 +337,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(_, leader) => {
         // we know leader, so send back index of leader
-        clients(src).send(
+        client.send(
           QuorumClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
                                   response =
@@ -349,7 +352,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         log.append(LogEntry(term = term, command = clientRequest.cmd))
 
         // keep track of which client is associated with this log entry
-        clientWriteReturn.update(getPrevLogIndex(), clients(src))
+        clientWriteReturn.update(getPrevLogIndex(), client)
 
         // send AppendEntriesRequest to all other participants if possible
         for (addr <- participants) {
@@ -369,8 +372,12 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
       s"Got ClientQuorumQuery from ${src}"
         + s" | Query: ${clientQuorumQuery.query}"
     )
+
+    // send back to client channel
+    val client = chan[QuorumClient[Transport]](src, QuorumClient.serializer)
+    
     val output = stateMachine.run(clientQuorumQuery.query.toByteArray)
-    clients(src).send(
+    client.send(
       QuorumClientInbound().withClientQuorumQueryResponse(
         ClientQuorumQueryResponse(success = true,
                                   latestIndex = getPrevLogIndex(),
