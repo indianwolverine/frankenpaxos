@@ -194,9 +194,11 @@ class BenchmarkDirectory(object):
         respectively. The return code of `ls -l` is return to
         `ls_returncode.txt`.
         """
+        print("before host")
         proc = host.popen(cmd,
                           stdout=self.abspath(f'{label}_out.txt'),
                           stderr=self.abspath(f'{label}_err.txt'))
+        print("after host")
         self.write_string(f'{label}_cmd.txt', proc.cmd())
         self.process_stack.enter_context(
             _Reaped(proc, self.abspath(f'{label}_returncode.txt')))
