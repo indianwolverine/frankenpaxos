@@ -165,20 +165,20 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // Leader State (reinit on election) /////////////////////////////////////////
 
   // index of next log entry to be sent to participant
-  var nextIndex: mutable.Map[Int, Int] = _
+  var nextIndex: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
 
   // index of highest log entry known to be replicated on participant
-  var matchIndex: mutable.Map[Int, Int] = _
+  var matchIndex: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
 
   // Helper data structures for Leader (also should reinit on election) //////
 
   // map of log indexes - client
-  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = _
+  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = mutable.Map[Int, Chan[Client[Transport]]]()
 
   // map tracking read heartbeats: uuid -> count, command, clientsrc
   var clientReads
       : mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]] =
-    _
+    mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
 
   // To identify heartbeat messages
   var uuid: Int = _
