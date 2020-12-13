@@ -158,7 +158,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
   // Helper data structures for Leader (also should reinit on election) //////
 
   // map of log indexes - client
-  var clientWriteReturn: mutable.Map[Int, Chan[QuorumClient[Transport]]] = mutable.Map[Int, Chan[QuorumClient[Transport]]]
+  var clientWriteReturn: mutable.Map[Int, Chan[QuorumClient[Transport]]] = mutable.Map[Int, Chan[QuorumClient[Transport]]]()
 
   // Receive ///////////////////////////////////////////////////////////////////
   override def receive(
