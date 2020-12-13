@@ -648,6 +648,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Follower(noPingTimer, _)          => { noPingTimer.stop() }
       case Candidate(notEnoughVotesTimer, _) => { notEnoughVotesTimer.stop() }
       case Leader(pingTimer)                 => { pingTimer.stop() }
+      case _                                 => {}
     }
   }
 
