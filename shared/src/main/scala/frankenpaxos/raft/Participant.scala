@@ -133,14 +133,11 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     leader match {
       case Some(leaderAddress) =>
         if (address == leaderAddress) {
-          val t = pingTimer()
-          t.start()
-          Leader(t)
+          transitionToLeader()
         } else {
-          val t = noPingTimer()
-          t.start()
-          Follower(t, leaderAddress)
+          transitionToFollower(0, leaderAddress)
         }
+        state
       case None =>
         val t = noPingTimer()
         t.start()

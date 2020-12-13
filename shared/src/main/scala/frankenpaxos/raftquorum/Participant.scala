@@ -120,10 +120,9 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         if (address == leaderAddress) {
           transitionToLeader()
         } else {
-          val t = noPingTimer()
-          t.start()
-          Follower(t, leaderAddress)
+          transitionToFollower(0, leaderAddress)
         }
+        state
       case None =>
         val t = noPingTimer()
         t.start()
