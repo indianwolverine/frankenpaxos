@@ -128,22 +128,6 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // The current term.
   var term: Int = 0
 
-  // The current state.
-  var state: ElectionState = {
-    leader match {
-      case Some(leaderAddress) =>
-        if (address == leaderAddress) {
-          transitionToLeader()
-        } else {
-          transitionToFollower(0, leaderAddress)
-        }
-      case None =>
-        val t = noPingTimer()
-        t.start()
-        LeaderlessFollower(t)
-    }
-  }
-
   // The log
   var log: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
   // add dummy entry to log
@@ -184,6 +168,22 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // To identify heartbeat messages
   var uuid: Int = _
+
+  // The current state.
+  var state: ElectionState = {
+    leader match {
+      case Some(leaderAddress) =>
+        if (address == leaderAddress) {
+          transitionToLeader()
+        } else {
+          transitionToFollower(0, leaderAddress)
+        }
+      case None =>
+        val t = noPingTimer()
+        t.start()
+        LeaderlessFollower(t)
+    }
+  }
 
   // Receive ///////////////////////////////////////////////////////////////////
   override def receive(

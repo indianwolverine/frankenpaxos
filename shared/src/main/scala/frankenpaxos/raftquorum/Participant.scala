@@ -113,22 +113,6 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
   // The current term.
   var term: Int = 0
 
-  // The current state.
-  var state: ElectionState = {
-    leader match {
-      case Some(leaderAddress) =>
-        if (address == leaderAddress) {
-          transitionToLeader()
-        } else {
-          transitionToFollower(0, leaderAddress)
-        }
-      case None =>
-        val t = noPingTimer()
-        t.start()
-        LeaderlessFollower(t)
-    }
-  }
-
   // The log
   var log: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
   // add dummy entry to log
@@ -161,6 +145,22 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
 
   // map of log indexes - client
   var clientWriteReturn: mutable.Map[Int, Chan[QuorumClient[Transport]]] = mutable.Map[Int, Chan[QuorumClient[Transport]]]()
+
+  // The current state.
+  var state: ElectionState = {
+    leader match {
+      case Some(leaderAddress) =>
+        if (address == leaderAddress) {
+          transitionToLeader()
+        } else {
+          transitionToFollower(0, leaderAddress)
+        }
+      case None =>
+        val t = noPingTimer()
+        t.start()
+        LeaderlessFollower(t)
+    }
+  }
 
   // Receive ///////////////////////////////////////////////////////////////////
   override def receive(
