@@ -151,9 +151,15 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
 
   // index of next log entry to be sent to participant
   var nextIndex: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+  (0 until config.participantAddresses.size).foreach { a =>
+      nextIndex.update(a, getPrevLogIndex() + 1)
+  }
 
   // index of highest log entry known to be replicated on participant
   var matchIndex: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+  (0 until config.participantAddresses.size).foreach { a =>
+      matchIndex.update(a, getPrevLogIndex() + 1)
+  }
 
   // Helper data structures for Leader (also should reinit on election) //////
 
