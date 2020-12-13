@@ -122,7 +122,6 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         } else {
           transitionToFollower(0, leaderAddress)
         }
-        state
       case None =>
         val t = noPingTimer()
         t.start()
@@ -634,7 +633,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
 
   // Node State Transitions  ////////////////////////////////////////////////////
 
-  private def transitionToLeader(): Unit = {
+  private def transitionToLeader(): ElectionState = {
     logger.info(s"Transitioning to leader from ${state}")
     stopTimer(state)
     val t = pingTimer()
@@ -656,21 +655,23 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         sendAppEntReq(index)
       }
     }
+    state
   }
 
   private def transitionToFollower(
       newterm: Int,
       leader: Transport#Address
-  ): Unit = {
+  ): ElectionState = {
     logger.info(s"Transitioning to follower from ${state}")
     stopTimer(state)
     term = newterm
     val t = noPingTimer()
     t.start()
     state = Follower(t, leader)
+    state
   }
 
-  private def transitionToCandidate(): Unit = {
+  private def transitionToCandidate(): ElectionState = {
     logger.info(s"Transitioning to candidate from ${state}")
     stopTimer(state)
     term += 1
@@ -689,6 +690,7 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
         )
       )
     }
+    state
   }
 
   // Helpers /////////////////////////////////////////////////////////////////
