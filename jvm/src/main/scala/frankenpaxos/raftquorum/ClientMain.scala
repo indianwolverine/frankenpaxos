@@ -147,29 +147,6 @@ object ClientMain extends App {
     quorumSystem = quorumSystem,
   )
 
-  // Functions to warmup and run the clients. When warming up, we don't record
-  // any stats.
-  def warmupRun(
-      workload: ReadWriteWorkload
-  ): Future[Unit] = {
-    implicit val context = transport.executionContext
-    val (future, error) = workload.get() match {
-      case Write(command) =>
-        (client.write(command), "Write failed.")
-      case Read(command) =>
-        (client.read(command), "Read failed.")
-    }
-
-    future.transformWith({
-      case scala.util.Failure(_) =>
-        logger.debug(error)
-        Future.successful(())
-
-      case scala.util.Success(_) =>
-        Future.successful(())
-    })
-  }
-
   val recorder = new BenchmarkUtil.LabeledRecorder(
     s"${flags.outputFilePrefix}_data.csv",
     groupSize = flags.measurementGroupSize
@@ -201,38 +178,7 @@ object ClientMain extends App {
       })
   }
 
-  // Warm up the protocol.
   implicit val context = transport.executionContext
-  val warmupFutures = {
-    if (flags.predeterminedReadFraction == -1) {
-      for (_ <- 0 until flags.numWarmupClients)
-        yield
-          BenchmarkUtil.runFor(() => warmupRun(flags.workload),
-                               flags.warmupDuration)
-    } else {
-      val readerFraction = flags.predeterminedReadFraction.toFloat / 100
-      val numReaders = (readerFraction * flags.numWarmupClients).ceil.toInt
-      for (index <- 0 until flags.numWarmupClients)
-        yield {
-          val workload = if (index < numReaders) {
-            flags.readWorkload
-          } else {
-            flags.writeWorkload
-          }
-          BenchmarkUtil.runFor(() => warmupRun(workload),
-                               flags.warmupDuration)
-        }
-    }
-  }
-  try {
-    logger.info("Client warmup started.")
-    concurrent.Await.result(Future.sequence(warmupFutures), flags.warmupTimeout)
-    logger.info("Client warmup finished successfully.")
-  } catch {
-    case e: java.util.concurrent.TimeoutException =>
-      logger.warn("Client warmup futures timed out!")
-      logger.warn(e.toString())
-  }
 
   // Sleep to let protocol settle.
   Thread.sleep(flags.warmupSleep.toMillis())
