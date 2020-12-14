@@ -3,7 +3,7 @@
 set -euo pipefail
 
 main() {
-    for protocol in raft; do
+    for protocol in raftquorum; do
                     # unreplicated batchedunreplicated multipaxos fasterpaxos \
                     # supermultipaxos vanillamencius mencius supermencius \
                     # fastmultipaxos epaxos simplebpaxos superbpaxos \

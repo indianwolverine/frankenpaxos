@@ -174,13 +174,14 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
             logger.error(
               s"PendingWrite failed: ${pendingWrite}."
             )
+            pending = None
             pendingWrite.promise.failure(new Exception("Write failed"))
           }
         } else {
           val response = requestResponse.response.toByteArray()
           logger.info(s"Write output received: ${response}")
-          pendingWrite.promise.success(response)
           pending = None
+          pendingWrite.promise.success(response)
         }
       case Some(_: PendingRead) =>
         logger.error("Request response received while no pending read exists.")
@@ -233,9 +234,10 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
             }
             // If Quorum has been reached for the first time
             if (quorumSystem.isReadQuorum(pendingRead.quorumResponses)) {
-              logger.info("Quorum reached!")
+              logger.info(s"Quorum reached: latestIndex = ${pendingRead.latestIndex}"
+                + s" | latestCommitted = ${pendingRead.latestCommitted}")
               if (
-                quorumQueryResponse.latestCommitted >= pendingRead.latestIndex
+                pendingRead.latestCommitted >= pendingRead.latestIndex
               ) {
                 // Already committed, no need to rinse
                 logger.info(s"No need to rinse, already committed, output: ${pendingRead.response}")
@@ -252,6 +254,8 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
           }
         } else {
           logger.error("Failed ClientQuorumQueryResponse received.")
+          pending = None
+          pendingRead.promise.failure(new Exception("Read failed"))
         }
       case None =>
         logger.error(
@@ -289,8 +293,9 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   // Interface
 
   def write(cmd: Array[Byte]): Future[Array[Byte]] = {
+    logger.info("Performing write...")
     if (pending != None) {
-      throw new Exception("An action is already pending!")
+      throw new Exception(s"An action ${pending} is already pending while trying to write!")
     }
     val promise = Promise[Array[Byte]]()
     pending = Some(
@@ -305,8 +310,9 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   def read(query: Array[Byte]): Future[Array[Byte]] = {
+    logger.info("Performing read...")
     if (pending != None) {
-      throw new Exception("An action is already pending!")
+      throw new Exception(s"An action ${pending} is already pending while trying to read!")
     }
     val promise = Promise[Array[Byte]]()
     pending = Some(

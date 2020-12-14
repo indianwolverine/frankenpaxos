@@ -142,13 +142,14 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             logger.error(
               s"PendingWrite failed: ${pendingWrite}."
             )
+            pending = None
             pendingWrite.promise.failure(new Exception("Write failed"))
           }
         } else {
           val response = requestResponse.response.toByteArray()
           logger.info(s"Write output received: ${response}")
-          pendingWrite.promise.success(response)
           pending = None
+          pendingWrite.promise.success(response)
         }
       case Some(_: PendingRead) =>
         logger.error("Request response received while no pending read exists.")
@@ -185,13 +186,14 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             logger.error(
               s"PendingRead failed: ${pendingRead}."
             )
+            pending = None
             pendingRead.promise.failure(new Exception("Read failed"))
           }
         } else {
           val response = queryResponse.response.toByteArray()
           logger.info(s"Read output received: ${response}")
-          pendingRead.promise.success(response)
           pending = None
+          pendingRead.promise.success(response)
         }
       case None =>
         logger.error(
@@ -221,8 +223,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   // Interface
 
   def write(cmd: Array[Byte]): Future[Array[Byte]] = {
+    logger.info("Performing write...")
     if (pending != None) {
-      throw new Exception("An action is already pending!")
+      throw new Exception(s"An action ${pending} is already pending while trying to write!")
     }
     val promise = Promise[Array[Byte]]()
     pending = Some(
@@ -237,8 +240,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   def read(query: Array[Byte]): Future[Array[Byte]] = {
+    logger.info("Performing read...")
     if (pending != None) {
-      throw new Exception("An action is already pending!")
+      throw new Exception(s"An action ${pending} is already pending while trying to read!")
     }
     val promise = Promise[Array[Byte]]()
     pending = Some(
