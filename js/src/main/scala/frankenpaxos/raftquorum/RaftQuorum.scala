@@ -75,7 +75,8 @@ class RaftQuorum {
     participant1Logger,
     config,
     new KeyValueStore(),
-    quorumSystem
+    quorumSystem,
+    participantIndex = 0
   )
 
   val participant2Logger = new JsLogger()
@@ -85,7 +86,8 @@ class RaftQuorum {
     participant2Logger,
     config,
     new KeyValueStore(),
-    quorumSystem
+    quorumSystem,
+    participantIndex = 1
   )
 
   val participant3Logger = new JsLogger()
@@ -95,7 +97,8 @@ class RaftQuorum {
     participant3Logger,
     config,
     new KeyValueStore(),
-    quorumSystem
+    quorumSystem,
+    participantIndex = 2
   )
 
   val participant4Logger = new JsLogger()
@@ -105,7 +108,8 @@ class RaftQuorum {
     participant4Logger,
     config,
     new KeyValueStore(),
-    quorumSystem
+    quorumSystem,
+    participantIndex = 3
   )
 
   val participant5Logger = new JsLogger()
@@ -115,7 +119,8 @@ class RaftQuorum {
     participant5Logger,
     config,
     new KeyValueStore(),
-    quorumSystem
+    quorumSystem,
+    participantIndex = 4
   )
 
   def serializeWrite(key: String, value: String): Array[Byte] = {

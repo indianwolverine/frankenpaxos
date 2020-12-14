@@ -52,7 +52,8 @@ lazy val frankenpaxos = crossProject(JSPlatform, JVMPlatform)
     // [1]: https://github.com/scalameter/scalameter-examples/blob/master/basic-with-separate-config/build.sbt
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
     parallelExecution in Benchmark := false,
-    logBuffered in Benchmark := false
+    logBuffered in Benchmark := false,
+    test in assembly := {}
   )
   .jsSettings(
     libraryDependencies += "org.scala-js" %%% "scalajs-java-time" % "0.2.5"

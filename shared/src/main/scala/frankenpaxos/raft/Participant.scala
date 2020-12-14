@@ -60,7 +60,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     config: Config[Transport],
     val stateMachine: StateMachine,
     leader: Option[Transport#Address] = None,
-    options: ElectionOptions = ElectionOptions.default
+    options: ElectionOptions = ElectionOptions.default,
+    val participantIndex: Int
 ) extends Actor(address, transport, logger) {
   // Possible states ///////////////////////////////////////////////////////////
   sealed trait ElectionState
@@ -79,7 +80,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   @JSExportAll
   case class Candidate(
       notEnoughVotesTimer: Transport#Timer,
-      votes: Set[Transport#Address]
+      votes: Set[Int]
   ) extends ElectionState
 
   @JSExportAll
@@ -109,43 +110,23 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   // The addresses of the other participants.
-  val nodes: Map[Transport#Address, Chan[Participant[Transport]]] = {
-    for (participantAddress <- config.participantAddresses)
-      yield (participantAddress ->
-        chan[Participant[Transport]](participantAddress,
+  val nodes: Map[Int, Chan[Participant[Transport]]] = {
+    for (i <- 0 until config.participantAddresses.size)
+      yield (i ->
+        chan[Participant[Transport]](config.participantAddresses(i),
                                      Participant.serializer
         ))
   }.toMap
 
   // The addresses of the clients.
-  val clients: Map[Transport#Address, Chan[Client[Transport]]] = {
-    for (clientAddress <- config.clientAddresses)
-      yield (clientAddress ->
-        chan[Client[Transport]](clientAddress, Client.serializer))
+  val clients: Map[Int, Chan[Client[Transport]]] = {
+    for (i <- 0 until config.clientAddresses.size)
+      yield (i ->
+        chan[Client[Transport]](config.clientAddresses(i), Client.serializer))
   }.toMap
 
   // The current term.
   var term: Int = 0
-
-  // The current state.
-  var state: ElectionState = {
-    leader match {
-      case Some(leaderAddress) =>
-        if (address == leaderAddress) {
-          val t = pingTimer()
-          t.start()
-          Leader(t)
-        } else {
-          val t = noPingTimer()
-          t.start()
-          Follower(t, leaderAddress)
-        }
-      case None =>
-        val t = noPingTimer()
-        t.start()
-        LeaderlessFollower(t)
-    }
-  }
 
   // The log
   var log: ArrayBuffer[LogEntry] = new ArrayBuffer[LogEntry](0)
@@ -164,23 +145,45 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   // Leader State (reinit on election) /////////////////////////////////////////
 
   // index of next log entry to be sent to participant
-  var nextIndex: mutable.Map[Transport#Address, Int] = _
+  var nextIndex: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+  (0 until config.participantAddresses.size).foreach { a =>
+      nextIndex.update(a, getPrevLogIndex() + 1)
+  }
 
   // index of highest log entry known to be replicated on participant
-  var matchIndex: mutable.Map[Transport#Address, Int] = _
+  var matchIndex: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+  (0 until config.participantAddresses.size).foreach { a =>
+      matchIndex.update(a, getPrevLogIndex() + 1)
+  }
 
   // Helper data structures for Leader (also should reinit on election) //////
 
   // map of log indexes - client
-  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = _
+  var clientWriteReturn: mutable.Map[Int, Chan[Client[Transport]]] = mutable.Map[Int, Chan[Client[Transport]]]()
 
   // map tracking read heartbeats: uuid -> count, command, clientsrc
   var clientReads
       : mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]] =
-    _
+    mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
 
   // To identify heartbeat messages
   var uuid: Int = _
+
+  // The current state.
+  var state: ElectionState = {
+    leader match {
+      case Some(leaderAddress) =>
+        if (address == leaderAddress) {
+          transitionToLeader()
+        } else {
+          transitionToFollower(0, leaderAddress)
+        }
+      case None =>
+        val t = noPingTimer()
+        t.start()
+        LeaderlessFollower(t)
+    }
+  }
 
   // Receive ///////////////////////////////////////////////////////////////////
   override def receive(
@@ -211,13 +214,14 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Term: ${voteRequest.term}"
         + s" | LastLogIndex = ${voteRequest.lastLogIndex}"
         + s" | LastLogTerm: ${voteRequest.lastLogTerm}"
+        + s" | ParticipantIndex: ${voteRequest.participantIndex}"
     )
 
     // If we hear a vote request from an earlier term, reply with current term and don't grant vote.
     if (voteRequest.term < term) {
-      nodes(src).send(
+      nodes(voteRequest.participantIndex).send(
         ParticipantInbound().withVoteResponse(
-          VoteResponse(term = term, voteGranted = false)
+          VoteResponse(term = term, voteGranted = false, participantIndex = participantIndex)
         )
       )
       return
@@ -231,9 +235,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       val t = noPingTimer()
       t.start()
       state = LeaderlessFollower(t)
-      nodes(src).send(
+      nodes(voteRequest.participantIndex).send(
         ParticipantInbound().withVoteResponse(
-          VoteResponse(term = term, voteGranted = true)
+          VoteResponse(term = term, voteGranted = true, participantIndex = participantIndex)
         )
       )
       return
@@ -251,10 +255,10 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Candidate(notEnoughVotesTimer, votes) => {
         // If the vote request is from myself, then I'll vote for myself.
         // Otherwise, I won't vote for another candidate.
-        if (src == address) {
-          nodes(src).send(
+        if (voteRequest.participantIndex == participantIndex) {
+          nodes(voteRequest.participantIndex).send(
             ParticipantInbound().withVoteResponse(
-              VoteResponse(term = term, voteGranted = true)
+              VoteResponse(term = term, voteGranted = true, participantIndex = participantIndex)
             )
           )
         }
@@ -274,6 +278,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       s"Got VoteResponse from ${src}"
         + s" | Term: ${vote.term}"
         + s" | VoteGranted = ${vote.voteGranted}"
+        + s" | ParticipantIndex: ${vote.participantIndex}"
     )
 
     // If we hear a vote from an earlier term, we ignore it.
@@ -316,7 +321,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
           return
         }
 
-        val newState = Candidate(notEnoughVotesTimer, votes + src)
+        val newState = Candidate(notEnoughVotesTimer, votes + vote.participantIndex)
         state = newState
 
         // If we've received votes from a majority of the nodes, then we are
@@ -342,10 +347,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Command: ${clientRequest.cmd}"
     )
 
+    // send back to client channel
+    val client = chan[Client[Transport]](src, Client.serializer)
+
     state match {
       case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(
+        client.send(
           ClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
                                   response =
@@ -357,7 +365,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(_, leader) => {
         // we know leader, so send back index of leader
-        clients(src).send(
+        client.send(
           ClientInbound().withClientRequestResponse(
             ClientRequestResponse(success = false,
                                   response =
@@ -372,12 +380,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         log.append(LogEntry(term = term, command = clientRequest.cmd))
 
         // keep track of which client is associated with this log entry
-        clientWriteReturn.update(getPrevLogIndex(), clients(src))
+        clientWriteReturn.update(getPrevLogIndex(), client)
 
         // send AppendEntriesRequest to all other participants if possible
-        for (addr <- participants) {
-          if (!addr.equals(address)) {
-            sendAppEntReq(addr)
+        for (index <- 0 until participants.size) {
+          if (!participants(index).equals(address)) {
+            sendAppEntReq(index)
           }
         }
       }
@@ -394,10 +402,13 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Query: ${readQuery.query}"
     )
 
+    // send back to client channel
+    val client = chan[Client[Transport]](src, Client.serializer)
+
     state match {
       case LeaderlessFollower(_) | Candidate(_, _) => {
         // don't know real leader, so pick a random other node
-        clients(src).send(
+        client.send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
                                 response =
@@ -409,7 +420,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       }
       case Follower(noPingTimer, leader) => {
         // we know leader, so send back index of leader
-        clients(src).send(
+        client.send(
           ClientInbound().withClientQueryResponse(
             ClientQueryResponse(success = false,
                                 response =
@@ -422,12 +433,12 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Leader(pingTimer) => {
         // Bump uuid to identify this heartbeat
         uuid += 1
-        clientReads(uuid) = Tuple3(0, readQuery, clients(src))
+        clientReads(uuid) = Tuple3(0, readQuery, client)
 
         // send heartbeats to all other participants
-        for (addr <- participants) {
-          if (!addr.equals(address)) {
-            sendAppEntReq(addr, Some(uuid))
+        for (index <- 0 until participants.size) {
+          if (!participants(index).equals(address)) {
+            sendAppEntReq(index, Some(uuid))
           }
         }
       }
@@ -446,6 +457,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Leader Commit: ${appReq.leaderCommit}"
         + s" | Entries: ${appReq.entries}"
         + s" | UUID: ${appReq.uuid}"
+        + s" | ParticipantIndex: ${appReq.participantIndex}"
     )
     var success = false
     if (appReq.term > term) {
@@ -507,7 +519,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     val response = AppendEntriesResponse(term = term,
                                          success = success,
                                          lastLogIndex = getPrevLogIndex(),
-                                         uuid = appReq.uuid
+                                         uuid = appReq.uuid,
+                                         participantIndex = participantIndex
     )
     logger.info(
       s"Sending AppendEntriesResponse to ${src}"
@@ -515,8 +528,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Success = ${response.success}"
         + s" | LastLogIndex = ${response.lastLogIndex}"
         + s" | UUID: ${response.uuid}"
+        + s" | ParticipantIndex: ${response.participantIndex}"
     )
-    nodes(src).send(ParticipantInbound().withAppendEntriesResponse(response))
+    nodes(appReq.participantIndex).send(ParticipantInbound().withAppendEntriesResponse(response))
   }
 
   private def handleAppendEntriesResponse(
@@ -529,6 +543,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         + s" | Success: ${appRes.success}"
         + s" | LastLogIndex: ${appRes.lastLogIndex}"
         + s" | UUID: ${appRes.uuid}"
+        + s" | ParticipantIndex: ${appRes.participantIndex}"
     )
     // If we hear from a leader in a larger term, then we immediately become a follower.
     if (appRes.term > term) {
@@ -538,8 +553,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
         case Leader(_) => {
           if (appRes.success) {
             // Update nextIndex and matchIndex for follower (src)
-            matchIndex.update(src, matchIndex(src).max(appRes.lastLogIndex))
-            nextIndex.update(src, matchIndex(src) + 1)
+            matchIndex.update(appRes.participantIndex, matchIndex(appRes.participantIndex).max(appRes.lastLogIndex))
+            nextIndex.update(appRes.participantIndex, matchIndex(appRes.participantIndex) + 1)
             // Commit entries
             // If there exists an N such that N > commitIndex, a majority
             // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
@@ -610,8 +625,8 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
             }
           } else {
             // decrement nextIndex for follower (src) and retry AppendEntriesRequest
-            nextIndex.update(src, 1.max(nextIndex(src) - 1))
-            sendAppEntReq(src)
+            nextIndex.update(appRes.participantIndex, 1.max(nextIndex(appRes.participantIndex) - 1))
+            sendAppEntReq(appRes.participantIndex)
           }
         }
         case default => {
@@ -633,6 +648,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       case Follower(noPingTimer, _)          => { noPingTimer.stop() }
       case Candidate(notEnoughVotesTimer, _) => { notEnoughVotesTimer.stop() }
       case Leader(pingTimer)                 => { pingTimer.stop() }
+      case _                                 => {}
     }
   }
 
@@ -642,9 +658,9 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
       "pingTimer",
       options.pingPeriod,
       () => {
-        for (addr <- participants) {
-          if (!addr.equals(address)) {
-            sendAppEntReq(addr)
+        for (index <- 0 until participants.size) {
+          if (!participants(index).equals(address)) {
+            sendAppEntReq(index)
           }
         }
         t.start()
@@ -692,18 +708,18 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
 
   // Node State Transitions  ////////////////////////////////////////////////////
 
-  private def transitionToLeader(): Unit = {
+  private def transitionToLeader(): ElectionState = {
     logger.info(s"Transitioning to leader from ${state}")
     stopTimer(state)
     val t = pingTimer()
     t.start()
     state = Leader(t)
-    nextIndex = mutable.Map[Transport#Address, Int]()
-    config.participantAddresses.foreach { a =>
+    nextIndex = mutable.Map[Int, Int]()
+    (0 until config.participantAddresses.size).foreach { a =>
       nextIndex.update(a, getPrevLogIndex() + 1)
     }
-    matchIndex = mutable.Map[Transport#Address, Int]()
-    config.participantAddresses.foreach { a => matchIndex.update(a, 0) }
+    matchIndex = mutable.Map[Int, Int]()
+    (0 until config.participantAddresses.size).foreach { a => matchIndex.update(a, 0) }
     clientWriteReturn = mutable.Map[Int, Chan[Client[Transport]]]()
     clientReads =
       mutable.Map[Int, Tuple3[Int, ReadCommand, Chan[Client[Transport]]]]()
@@ -712,26 +728,28 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     log.append(
       LogEntry(term = term, command = CommandOrNoop().withNoop(Noop()))
     )
-    for (addr <- participants) {
-      if (!addr.equals(address)) {
-        sendAppEntReq(addr)
+    for (index <- 0 until participants.size) {
+      if (!participants(index).equals(address)) {
+        sendAppEntReq(index)
       }
     }
+    state
   }
 
   private def transitionToFollower(
       newterm: Int,
       leader: Transport#Address
-  ): Unit = {
+  ): ElectionState = {
     logger.info(s"Transitioning to follower from ${state}")
     stopTimer(state)
     term = newterm
     val t = noPingTimer()
     t.start()
     state = Follower(t, leader)
+    state
   }
 
-  private def transitionToCandidate(): Unit = {
+  private def transitionToCandidate(): ElectionState = {
     logger.info(s"Transitioning to candidate from ${state}")
     stopTimer(state)
     term += 1
@@ -739,16 +757,18 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
     t.start()
     state = Candidate(t, Set())
 
-    for (address <- participants) {
-      nodes(address).send(
+    for (index <- 0 until participants.size) {
+      nodes(index).send(
         ParticipantInbound().withVoteRequest(
           VoteRequest(term = term,
                       lastLogIndex = getPrevLogIndex(),
-                      lastLogTerm = getPrevLogTerm()
+                      lastLogTerm = getPrevLogTerm(),
+                      participantIndex = participantIndex
           )
         )
       )
     }
+    state
   }
 
   // Helpers /////////////////////////////////////////////////////////////////
@@ -763,28 +783,30 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def sendAppEntReq(
-      address: Transport#Address,
+      index: Int,
       uuid: Option[Int] = None
   ): Unit = {
-    val prevLogIndex = nextIndex(address) - 1
+    val prevLogIndex = nextIndex(index) - 1
     val request = AppendEntriesRequest(
       term = term,
       prevLogIndex = prevLogIndex,
       prevLogTerm = log(prevLogIndex).term,
       entries = log.slice(prevLogIndex + 1, log.length),
       leaderCommit = commitIndex.min(log.length),
-      uuid = uuid
+      uuid = uuid,
+      participantIndex = participantIndex
     )
     logger.info(
-      s"Sending AppendEntriesRequest to ${address}"
+      s"Sending AppendEntriesRequest to ${nodes(index)}"
         + s" | Term: ${request.term}"
         + s" | PrevLogIndex = ${request.prevLogIndex}"
         + s" | PrevLogTerm = ${request.prevLogTerm}"
         + s" | Entries = ${request.entries}"
         + s" | Leader Commit = ${request.leaderCommit}"
         + s" | UUID = ${request.uuid}"
+        + s" | ParticipantIndex: ${request.participantIndex}"
     )
-    nodes(address).send(ParticipantInbound().withAppendEntriesRequest(request))
+    nodes(index).send(ParticipantInbound().withAppendEntriesRequest(request))
   }
 
   private def applyCommandOrNoop(commandOrNoop: CommandOrNoop): Array[Byte] = {
