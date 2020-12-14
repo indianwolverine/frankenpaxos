@@ -147,19 +147,19 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
   var clientWriteReturn: mutable.Map[Int, Chan[QuorumClient[Transport]]] = mutable.Map[Int, Chan[QuorumClient[Transport]]]()
 
   // The current state.
-  var state: ElectionState = {
-    leader match {
-      case Some(leaderAddress) =>
-        if (address == leaderAddress) {
-          transitionToLeader()
-        } else {
-          transitionToFollower(0, leaderAddress)
-        }
-      case None =>
-        val t = noPingTimer()
-        t.start()
-        LeaderlessFollower(t)
-    }
+  var state: ElectionState = _
+  // Set state
+  leader match {
+    case Some(leaderAddress) =>
+      if (address == leaderAddress) {
+        transitionToLeader()
+      } else {
+        transitionToFollower(0, leaderAddress)
+      }
+    case None =>
+      val t = noPingTimer()
+      t.start()
+      state = LeaderlessFollower(t)
   }
 
   // Receive ///////////////////////////////////////////////////////////////////

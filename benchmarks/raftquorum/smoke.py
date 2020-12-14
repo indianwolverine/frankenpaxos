@@ -15,7 +15,7 @@ def main(args) -> None:
                     num_clients_per_proc = 1,
                     measurement_group_size = 1,
                     warmup_duration = datetime.timedelta(seconds=2),
-                    warmup_timeout = datetime.timedelta(seconds=3),
+                    warmup_timeout = datetime.timedelta(seconds=10),
                     warmup_sleep = datetime.timedelta(seconds=0),
                     duration = datetime.timedelta(seconds=2),
                     timeout = datetime.timedelta(seconds=3),
