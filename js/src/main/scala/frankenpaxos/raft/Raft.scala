@@ -2,6 +2,9 @@ package frankenpaxos.raft
 
 import scala.collection.mutable
 import scala.scalajs.js.annotation._
+import scala.scalajs.js.JSConverters._
+import scala.scalajs.js
+import scala.concurrent.Future
 import frankenpaxos.Actor
 import frankenpaxos.JsLogger
 import frankenpaxos.JsTransport
@@ -11,7 +14,9 @@ import frankenpaxos.statemachine.{
   GetRequest,
   KeyValueStoreInput,
   SetKeyValuePair,
-  SetRequest
+  SetRequest,
+  KeyValueStoreOutputSerializer,
+  KeyValueStoreOutput,
 }
 @JSExportAll
 class Raft {
@@ -123,6 +128,23 @@ class Raft {
     KeyValueStoreInput()
       .withGetRequest(GetRequest(key = Seq(key)))
       .toByteArray
+  }
+
+  def toPromise(future: Future[Array[Byte]]): js.Promise[Array[Byte]] = {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    future.toJSPromise
+  }
+
+  def deserializeOutput(bytes: Array[Byte]): String = {
+    import KeyValueStoreOutput.Reply
+    val kvoutput: KeyValueStoreOutput = KeyValueStoreOutputSerializer.fromBytes(bytes)
+    kvoutput.reply match {
+      case Reply.GetReply(pairs) =>
+        return pairs.toString()
+      case Reply.SetReply(content) =>
+        return content.toString()
+      case Reply.Empty => "Empty"
+    }
   }
 }
 

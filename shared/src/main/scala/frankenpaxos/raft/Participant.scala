@@ -606,7 +606,7 @@ class Participant[Transport <: frankenpaxos.Transport[Transport]](
                   // No + 1 here because the leader is part of the majority
                   if (count >= (participants.size / 2)) {
                     logger.info(s"Heartbeat majority reached for ${uuid}")
-                    val output = stateMachine.run(tuple._2.toByteArray)
+                    val output = stateMachine.run(tuple._2.query.toByteArray)
                     tuple._3.send(
                       ClientInbound().withClientQueryResponse(
                         ClientQueryResponse(success = true,

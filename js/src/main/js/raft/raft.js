@@ -10,11 +10,16 @@ let client_info = {
   },
 
   methods: {
+    deserialize(future) {
+      this.raft.toPromise(future).then(result => {
+        console.log(this.raft.deserializeOutput(result))
+      })
+    },
     write: function () {
       if (this.writeKey === "" || this.writeValue === "") {
         return;
       }
-      console.log(this.node.actor.write(this.raft.serializeWrite(this.writeKey, this.writeValue)));
+      this.deserialize(this.node.actor.write(this.raft.serializeWrite(this.writeKey, this.writeValue)));
       this.writeKey = "";
       this.writeValue = "";
     },
@@ -22,7 +27,7 @@ let client_info = {
       if (this.readKey === "") {
         return;
       }
-      console.log(this.node.actor.read(this.raft.serializeRead(this.readKey)));
+      this.deserialize(this.node.actor.read(this.raft.serializeRead(this.readKey)));
       this.readKey = "";
     }
   },
