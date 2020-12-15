@@ -12,7 +12,7 @@ let client_info = {
   methods: {
     deserialize(future) {
       this.raft.toPromise(future).then(result => {
-        console.log(this.raft.deserializeOutput(result))
+        console.log(`${this.node.actor.address.toString()} received ${this.raft.deserializeOutput(result)}`)
       })
     },
     write: function () {
@@ -38,14 +38,15 @@ let client_info = {
         <div><strong>Participants</strong>: {{node.actor.raftParticipants}} </div>
         <div><strong>Pending Action</strong>: {{node.actor.pending}} </div>
         <div>
-          <button v-on:click="write">Write (Key, Value)</button>
-          <input v-model="writeKey"></input>
-          <input v-model="writeValue"></input>
+        <button v-on:click="write">Write (Key, Value)</button>
+        <input v-model="writeKey"></input>
+        <input v-model="writeValue"></input>
         </div>
         <div>
-          <button v-on:click="read">Read (Key)</button>
-          <input v-model="readKey" v-on:keyup.enter="read"></input>
+        <button v-on:click="read">Read (Key)</button>
+        <input v-model="readKey" v-on:keyup.enter="read"></input>
         </div>
+        <div>*View responses in the console - Press F12</div>
       </div>
     `,
 };
