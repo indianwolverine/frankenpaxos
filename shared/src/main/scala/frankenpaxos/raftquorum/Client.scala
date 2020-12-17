@@ -295,6 +295,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   def write(cmd: Array[Byte]): Future[Array[Byte]] = {
     logger.info("Performing write...")
     if (pending != None) {
+      logger.error(s"An action ${pending} is already pending while trying to write!")
       throw new Exception(s"An action ${pending} is already pending while trying to write!")
     }
     val promise = Promise[Array[Byte]]()
@@ -312,6 +313,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
   def read(query: Array[Byte]): Future[Array[Byte]] = {
     logger.info("Performing read...")
     if (pending != None) {
+      logger.error(s"An action ${pending} is already pending while trying to read!")
       throw new Exception(s"An action ${pending} is already pending while trying to read!")
     }
     val promise = Promise[Array[Byte]]()

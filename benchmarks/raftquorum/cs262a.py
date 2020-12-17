@@ -11,7 +11,7 @@ def main(args) -> None:
                 Input(
                     f = f,
                     num_client_procs = num_client_procs,
-                    num_warmup_clients_per_proc = 1,
+                    num_warmup_clients_per_proc = 0,
                     num_clients_per_proc = num_clients_per_proc,
                     measurement_group_size = 1,
                     warmup_duration = datetime.timedelta(seconds=0),
@@ -55,24 +55,24 @@ def main(args) -> None:
                 for (f, num_client_procs, num_clients_per_proc, 
                     predetermined_read_fraction) in [
                     # 3 participants
-                    (1, 10, 100, 0),
-                    (1, 10, 100, 25),
-                    (1, 10, 100, 50),
-                    (1, 10, 100, 70),
+                    (1, 1, 2, 0),
+                    (1, 1, 2, 25),
+                    (1, 1, 2, 50),
+                    (1, 1, 2, 70),
 
                     # 5 participants
-                    (2, 10, 100, 0),
-                    (2, 10, 100, 25),
-                    (2, 10, 100, 50),
-                    (2, 10, 100, 70),
+                    (2, 1, 2, 0),
+                    (2, 1, 2, 25),
+                    (2, 1, 2, 50),
+                    (2, 1, 2, 70),
 
                     # 7 participants
-                    (3, 10, 100, 0),
-                    (3, 10, 100, 25),
-                    (3, 10, 100, 50),
-                    (3, 10, 100, 70),
+                    (3, 1, 2, 0),
+                    (3, 1, 2, 25),
+                    (3, 1, 2, 50),
+                    (3, 1, 2, 70),
                 ]
-            ] * 5)[:]
+            ] * 1)[:]
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
@@ -84,6 +84,10 @@ def main(args) -> None:
                     f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': \
                     f'{output.write_output.start_throughput_1s.p90:.6}',
+                'read.latency.mediam_ms': \
+                    f'{output.read_output.latency.median_ms:.6}',
+                'read.start_throughput_1s.p90': \
+                    f'{output.read_output.start_throughput_1s.p90:.8}',
             })
 
     suite = SmokeRaftQuorumSuite()

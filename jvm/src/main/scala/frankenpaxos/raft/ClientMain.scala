@@ -178,17 +178,23 @@ object ClientMain extends App {
   // Sleep to let protocol settle.
   Thread.sleep(flags.warmupSleep.toMillis())
 
+  logger.info("Done sleepy")
+
   // Run the benchmark.
   val futures = {
     if (flags.predeterminedReadFraction == -1) {
+      logger.info("-1 path chosen")
+      logger.info(s"${flags.numWarmupClients + flags.numClients}")
       for (_ <- flags.numWarmupClients until
              flags.numWarmupClients + flags.numClients)
-        yield
+      yield
           BenchmarkUtil.runFor(() => run(flags.workload),
                                flags.duration)
     } else {
       val readerFraction = flags.predeterminedReadFraction.toFloat / 100
       val numReaders = (readerFraction * flags.numClients).ceil.toInt
+      logger.info("not -1 path chosen")
+      logger.info(s"${flags.numWarmupClients + flags.numClients}")
       for (index <- flags.numWarmupClients until
              flags.numWarmupClients + flags.numClients)
         yield {

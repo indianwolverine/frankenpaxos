@@ -11,7 +11,7 @@ def main(args) -> None:
                 Input(
                     f = 1,
                     num_client_procs = 1,
-                    num_warmup_clients_per_proc = 1,
+                    num_warmup_clients_per_proc = 0,
                     num_clients_per_proc = 1,
                     measurement_group_size = 1,
                     warmup_duration = datetime.timedelta(seconds=5),

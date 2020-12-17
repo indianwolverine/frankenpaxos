@@ -352,7 +352,7 @@ class RaftSuite(benchmark.Suite[Input, Output]):
             bench,
             client_csvs,
             drop_prefix=datetime.timedelta(seconds=0),
-            save_data=False)
+            save_data=True)
         read_output = (labeled_data['read']
                        if 'read' in labeled_data
                        else dummy_output)

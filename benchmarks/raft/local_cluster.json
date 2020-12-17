@@ -2,5 +2,13 @@
   "1": {
     "clients": ["localhost"],
     "participants": ["localhost"]
+  },
+  "2": {
+    "clients": ["localhost"],
+    "participants": ["localhost"]
+  },
+  "3": {
+    "clients": ["localhost"],
+    "participants": ["localhost"]
   }
 }
