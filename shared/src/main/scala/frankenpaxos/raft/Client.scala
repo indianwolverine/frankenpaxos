@@ -93,6 +93,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       s"resendPendingWrite",
       java.time.Duration.ofSeconds(10),
       () => {
+        logger.info(s"Resending write...")
         leaderIndex = rand.nextInt(raftParticipants.size)
         writeImpl(cmd)
         t.start()
@@ -109,6 +110,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       s"resendPendingRead",
       java.time.Duration.ofSeconds(10),
       () => {
+        logger.info(s"Resending read...")
         leaderIndex = rand.nextInt(raftParticipants.size)
         readImpl(query)
         t.start()
@@ -203,6 +205,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def writeImpl(cmd: Array[Byte]): Unit = {
+    logger.info(s"Sending write to ${raftParticipants(leaderIndex)}")
     raftParticipants(leaderIndex).send(
       ParticipantInbound().withClientRequest(
         ClientRequest(
@@ -213,6 +216,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   private def readImpl(query: Array[Byte]): Unit = {
+    logger.info(s"Sending read to ${raftParticipants(leaderIndex)}")
     raftParticipants(leaderIndex).send(
       ParticipantInbound().withClientQuery(
         ClientQuery(ReadCommand(query = ByteString.copyFrom(query)))

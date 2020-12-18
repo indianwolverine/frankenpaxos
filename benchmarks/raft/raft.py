@@ -45,8 +45,6 @@ class Input(NamedTuple):
     # System-wide parameters. ##################################################
     f: int
     num_client_procs: int
-    num_warmup_clients_per_proc: int
-    num_clients_per_proc: int
 
     # Benchmark parameters. ####################################################
     measurement_group_size: int
@@ -57,11 +55,8 @@ class Input(NamedTuple):
     timeout: datetime.timedelta
     client_lag: datetime.timedelta
     state_machine: str
-    predetermined_read_fraction: int
     workload_label: str
     workload: read_write_workload.ReadWriteWorkload
-    read_workload: read_write_workload.ReadWriteWorkload
-    write_workload: read_write_workload.ReadWriteWorkload
     profiled: bool
     monitored: bool
     prometheus_scrape_interval: datetime.timedelta
@@ -245,14 +240,6 @@ class RaftSuite(benchmark.Suite[Input, Output]):
         bench.write_string(
             workload_filename,
             proto_util.message_to_pbtext(input.workload.to_proto()))
-        read_workload_filename = bench.abspath('read_workload.pbtxt')
-        bench.write_string(
-            read_workload_filename,
-            proto_util.message_to_pbtext(input.read_workload.to_proto()))
-        write_workload_filename = bench.abspath('write_workload.pbtxt')
-        bench.write_string(
-            write_workload_filename,
-            proto_util.message_to_pbtext(input.write_workload.to_proto()))
 
         client_procs: List[proc.Proc] = []
         for (i, client) in enumerate(net.placement().clients):
@@ -286,24 +273,14 @@ class RaftSuite(benchmark.Suite[Input, Output]):
                     f'{input.warmup_timeout.total_seconds()}s',
                     '--warmup_sleep',
                     f'{input.warmup_sleep.total_seconds()}s',
-                    '--num_warmup_clients',
-                    f'{input.num_warmup_clients_per_proc}',
                     '--duration',
                     f'{input.duration.total_seconds()}s',
                     '--timeout',
                     f'{input.timeout.total_seconds()}s',
-                    '--num_clients',
-                    f'{input.num_clients_per_proc}',
                     '--output_file_prefix',
                     bench.abspath(f'client_{i}'),
-                    '--predetermined_read_fraction',
-                    f'{input.predetermined_read_fraction}',
                     '--workload',
                     f'{workload_filename}',
-                    '--read_workload',
-                    f'{read_workload_filename}',
-                    '--write_workload',
-                    f'{write_workload_filename}',
                 ])
             if input.profiled:
                 p = perf_util.JavaPerfProc(bench, client.host, p, f'client_{i}')
