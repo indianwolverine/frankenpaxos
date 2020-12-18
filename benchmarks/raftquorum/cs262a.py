@@ -10,6 +10,8 @@ def main(args) -> None:
             return ([
                 Input(
                     f = f,
+                    m = 0, 
+                    n = 0,
                     num_client_procs = num_client_procs,
                     measurement_group_size = 1,
                     warmup_duration = datetime.timedelta(seconds=0),
@@ -18,6 +20,7 @@ def main(args) -> None:
                     duration = datetime.timedelta(seconds=15),
                     timeout = datetime.timedelta(seconds=20),
                     client_lag = datetime.timedelta(seconds=5),
+                    quorum_system = 'MAJORITY',
                     state_machine = 'KeyValueStore',
                     workload_label = "cs262a",
                     workload = workload,

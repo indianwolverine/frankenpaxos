@@ -44,6 +44,8 @@ class ParticipantOptions(NamedTuple):
 class Input(NamedTuple):
     # System-wide parameters. ##################################################
     f: int
+    m: int # number of participants in write quorum
+    n: int # number of participants in read quorum
     num_client_procs: int
 
     # Benchmark parameters. ####################################################
@@ -54,6 +56,7 @@ class Input(NamedTuple):
     duration: datetime.timedelta
     timeout: datetime.timedelta
     client_lag: datetime.timedelta
+    quorum_system: str
     state_machine: str
     workload_label: str
     workload: read_write_workload.ReadWriteWorkload
@@ -97,7 +100,7 @@ class RaftQuorumNet:
         def cycle_take_n(n: int, hosts: List[host.Host]) -> List[host.Host]:
             return list(itertools.islice(itertools.cycle(hosts), n))
 
-        n = 2 * self._input.f + 1
+        n = 2 * self._input.f + 1 if self._input.f > 0 else self._input.m * self._input.n
 
         return self.Placement(
             clients=portify(
@@ -108,7 +111,6 @@ class RaftQuorumNet:
 
     def config(self) -> proto_util.Message:
         return {
-            # "f": self._input.f,
             "participant_addresses": [
                 {"host": e.host.ip(), "port": e.port}
                 for e in self.placement().participants
@@ -176,6 +178,8 @@ class RaftQuorumSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--config',
                     config_filename,
+                    '--quorum_system',
+                    input.quorum_system,
                     '--state_machine',
                     input.state_machine,
                     '--log_level',
@@ -257,6 +261,10 @@ class RaftQuorumSuite(benchmark.Suite[Input, Output]):
                     client.host.ip(),
                     '--port',
                     str(client.port),
+                    '--quorum_system',
+                    input.quorum_system,
+                    '--row_size',
+                    str(input.n),
                     '--config',
                     config_filename,
                     '--log_level',

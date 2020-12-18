@@ -7,6 +7,7 @@ import frankenpaxos.NettyTcpAddress
 import frankenpaxos.NettyTcpTransport
 import frankenpaxos.PrintLogger
 import frankenpaxos.PrometheusUtil
+import frankenpaxos.Transport
 import frankenpaxos.statemachine
 import frankenpaxos.statemachine.{
   StateMachine,
@@ -15,12 +16,14 @@ import frankenpaxos.statemachine.{
 }
 import frankenpaxos.raft.ElectionOptions
 import frankenpaxos.quorums.SimpleMajority
+import frankenpaxos.quorums.Grid
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import scala.concurrent.duration
+import scala.collection.mutable.ArrayBuffer
 
 object ParticipantMain extends App {
   case class Flags(
@@ -33,7 +36,9 @@ object ParticipantMain extends App {
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
       // Options.
-      options: ElectionOptions = ElectionOptions.default
+      options: ElectionOptions = ElectionOptions.default,
+      quorumSystem: String = "MAJORITY",
+      rowSize: Int = 0,
   )
 
   implicit class OptionsWrapper[A](o: scopt.OptionDef[A, Flags]) {
@@ -53,6 +58,10 @@ object ParticipantMain extends App {
     opt[StateMachine]("state_machine")
       .required()
       .action((x, f) => f.copy(stateMachine = x))
+    opt[String]("quorum_system")
+      .action((x, f) => f.copy(quorumSystem = x))
+    opt[Int]("row_size")
+      .action((x, f) => f.copy(rowSize = x))
 
     // Monitoring.
     opt[String]("prometheus_host")
@@ -86,9 +95,22 @@ object ParticipantMain extends App {
   val logger = new PrintLogger(flags.logLevel)
   val transport = new NettyTcpTransport(logger)
   val config = ConfigUtil.fromFile(flags.configFile.getAbsolutePath())
-  val quorumSystem = new SimpleMajority(
-    (0 until config.participantAddresses.size).toSet,
-  )
+  val quorumSystem = flags.quorumSystem match {
+    case "MAJORITY" => new SimpleMajority(
+      (0 until config.participantAddresses.size).toSet,
+    )
+    case "GRID" => {
+      val numRows: Int = config.participantAddresses.size / flags.rowSize
+      var grid: ArrayBuffer[ArrayBuffer[Int]] = new ArrayBuffer[ArrayBuffer[Int]]()
+      for (i <- 0 until numRows) {
+        grid += new ArrayBuffer[Int]()
+      }
+      for (i <- 0 until config.participantAddresses.size) {
+        grid((i + 1) % flags.rowSize) += i
+      }
+      new Grid(grid)
+    }
+  }
   val participant = new QuorumParticipant[NettyTcpTransport](
     address = config.participantAddresses(flags.index),
     transport = transport,

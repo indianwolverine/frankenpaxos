@@ -11,8 +11,6 @@ def main(args) -> None:
                 Input(
                     f = 1,
                     num_client_procs = 1,
-                    num_warmup_clients_per_proc = 0,
-                    num_clients_per_proc = 1,
                     measurement_group_size = 1,
                     warmup_duration = datetime.timedelta(seconds=5),
                     warmup_timeout = datetime.timedelta(seconds=30),
@@ -21,16 +19,9 @@ def main(args) -> None:
                     timeout = datetime.timedelta(seconds=15),
                     client_lag = datetime.timedelta(seconds=10),
                     state_machine = 'KeyValueStore',
-                    predetermined_read_fraction = -1,
                     workload_label = "smoke",
                     workload = read_write_workload.UniformReadWriteWorkload(
                         num_keys=1, read_fraction=0.5, write_size_mean=1,
-                        write_size_std=0),
-                    read_workload = read_write_workload.UniformReadWriteWorkload(
-                        num_keys=1, read_fraction=1.0, write_size_mean=1,
-                        write_size_std=0),
-                    write_workload = read_write_workload.UniformReadWriteWorkload(
-                        num_keys=1, read_fraction=0.0, write_size_mean=1,
                         write_size_std=0),
                     profiled = args.profile,
                     monitored = args.monitor,
@@ -55,15 +46,18 @@ def main(args) -> None:
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
-                'f': input.f,
                 'num_participants': 2 * input.f + 1,
                 'num_client_procs': input.num_client_procs,
-                'num_clients_per_proc': input.num_clients_per_proc,
+                'workload': input.workload,
                 'write.latency.median_ms': \
                     f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': \
                     f'{output.write_output.start_throughput_1s.p90:.6}',
-            })
+                'read.latency.median_ms': \
+                    f'{output.read_output.latency.median_ms:.6}',
+                'read.start_throughput_1s.p90': \
+                    f'{output.read_output.start_throughput_1s.p90:.8}',
+                })
 
     suite = SmokeRaftSuite()
     with benchmark.SuiteDirectory(args.suite_directory,
