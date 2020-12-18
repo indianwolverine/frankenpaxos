@@ -63,7 +63,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
       promise: Promise[Array[Byte]],
       query: Array[Byte],
       resendTimer: Transport#Timer,
-      rinseTimer: Transport#Timer,
+      resendRinseTimer: Transport#Timer,
       var latestIndex: Int,
       var latestCommitted: Int,
       var response: Array[Byte],
@@ -123,12 +123,12 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
     t
   }
 
-  private def makeRinseTimer(
+  private def makeResendRinseTimer(
       query: Array[Byte]
   ): Transport#Timer = {
     lazy val t: Transport#Timer = timer(
       s"rinse",
-      java.time.Duration.ofSeconds(1),
+      java.time.Duration.ofSeconds(10),
       () => {
         rinse(query)
         t.start()
@@ -212,14 +212,17 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
           if (quorumSystem.isReadQuorum(pendingRead.quorumResponses)) {
             // Quorum has already been reached, this must be a rinse response
             logger.info("Got rinse response.")
+            pendingRead.resendRinseTimer.reset()
             if (
               quorumQueryResponse.latestCommitted >= pendingRead.latestIndex
             ) {
               logger.info("Entry got committed! Stopping rinses.")
               pendingRead.resendTimer.stop()
-              pendingRead.rinseTimer.stop()
+              pendingRead.resendRinseTimer.stop()
               pending = None
               pendingRead.promise.success(pendingRead.response)
+            } else {
+              rinse(pendingRead.query)
             }
           } else {
             pendingRead.quorumResponses += config.participantAddresses.indexOf(
@@ -242,13 +245,13 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
                 // Already committed, no need to rinse
                 logger.info(s"No need to rinse, already committed, output: ${pendingRead.response}")
                 pendingRead.resendTimer.stop()
-                pendingRead.rinseTimer.stop()
+                pendingRead.resendRinseTimer.stop()
                 pending = None
                 pendingRead.promise.success(pendingRead.response)
               } else {
                 // Need to rinse for the first time
                 logger.info("Starting rinsing...")
-                pendingRead.rinseTimer.start()
+                rinse(pendingRead.query)
               }
             }
           }
@@ -322,7 +325,7 @@ class QuorumClient[Transport <: frankenpaxos.Transport[Transport]](
         promise = promise,
         query = query,
         resendTimer = makePendingReadResendTimer(query),
-        rinseTimer = makeRinseTimer(query),
+        resendRinseTimer = makeResendRinseTimer(query),
         latestIndex = 0,
         latestCommitted = 0,
         response = Array[Byte](0),

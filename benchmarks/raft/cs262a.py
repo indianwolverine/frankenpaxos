@@ -62,14 +62,21 @@ def main(args) -> None:
                     (3, 10, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=0.5, write_size_mean=1, write_size_std=0)),
                     (3, 10, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=0.75, write_size_mean=1, write_size_std=0)),
                     (3, 10, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=1, write_size_mean=1, write_size_std=0)),
+                
+                    # More clients
+                    (2, 25, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=0, write_size_mean=1, write_size_std=0)),
+                    (2, 25, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=0.25, write_size_mean=1, write_size_std=0)),
+                    (2, 25, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=0.5, write_size_mean=1, write_size_std=0)),
+                    (2, 25, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=0.75, write_size_mean=1, write_size_std=0)),
+                    (2, 25, read_write_workload.UniformReadWriteWorkload(num_keys=1, read_fraction=1, write_size_mean=1, write_size_std=0)),
                 ]
             ] * 1)[:]
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
-                'f': input.f,
                 'num_participants': 2 * input.f + 1,
                 'num_client_procs': input.num_client_procs,
+                'workload': input.workload,
                 'write.latency.median_ms': \
                     f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': \

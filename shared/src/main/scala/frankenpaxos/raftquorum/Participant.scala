@@ -647,10 +647,6 @@ class QuorumParticipant[Transport <: frankenpaxos.Transport[Transport]](
     matchIndex = mutable.Map[Int, Int]()
     (0 until config.participantAddresses.size).foreach { a => matchIndex.update(a, 0) }
     clientWriteReturn = mutable.Map[Int, Chan[QuorumClient[Transport]]]()
-
-    log.append(
-      LogEntry(term = term, command = CommandOrNoop().withNoop(Noop()))
-    )
     for (index <- 0 until participants.size) {
       if (!participants(index).equals(address)) {
         sendAppEntReq(index)
