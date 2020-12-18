@@ -10,7 +10,7 @@ def main(args) -> None:
             return ([
                 Input(
                     f = f,
-                    m = 0, 
+                    m = 0,
                     n = 0,
                     num_client_procs = num_client_procs,
                     measurement_group_size = 1,

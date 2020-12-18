@@ -180,6 +180,8 @@ class RaftQuorumSuite(benchmark.Suite[Input, Output]):
                     config_filename,
                     '--quorum_system',
                     input.quorum_system,
+                    '--row_size',
+                    str(input.n),
                     '--state_machine',
                     input.state_machine,
                     '--log_level',
