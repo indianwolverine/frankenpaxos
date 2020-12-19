@@ -109,8 +109,13 @@ object ClientMain extends App {
       for (i <- 0 until numRows) {
         grid += new ArrayBuffer[Int]()
       }
+      var j = 0
       for (i <- 0 until config.participantAddresses.size) {
-        grid((i + 1) % flags.rowSize) += i
+        grid(j) += i
+        j += 1
+        if (j == numRows) {
+          j = 0
+        }
       }
       new Grid(grid)
     }
